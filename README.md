@@ -1,5 +1,7 @@
 # syntk
 
+syntk - a synthetic data toolkit
+
 This project uses [`uv`](https://github.com/astral-sh/uv), which can be installed in one line: 
 ```bash
 # On macOS and Linux.
