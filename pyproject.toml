@@ -8,6 +8,7 @@ dependencies = []
 
 [project.scripts]
 syntk = "syntk:cli.main"
+lmfill = "syntk:lmfill.main"
 
 [build-system]
 requires = ["hatchling"]
