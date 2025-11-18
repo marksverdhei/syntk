@@ -314,7 +314,7 @@ def main() -> None:
 
     # Process rows one at a time with periodic checkpointing
     processed_count = 0
-    for idx in tqdm(rows_to_process, desc="Annotating"):
+    for idx in tqdm(rows_to_process, desc="Generating"):
         row = df.loc[idx]
         result = annotate_difficulty(row, client, api_args, gen_args, data_args, proc_args)
         df.at[idx, data_args.output_column] = result
