@@ -9,7 +9,7 @@ model: "anthropic/claude-sonnet-4.5"
 input_file: "hf://datasets/ltg/norec_sentence/ternary/validation-00000-of-00001.parquet"
 output_file: "data/validation_annotated_difficulty.parquet"
 output_column: "difficulty_score_sonnet4.5_or" # Name of the generated output column
-limit: 100 # null for all, integer for count, float (0-1) for fraction
+limit: 10 # null for all, integer for count, float (0-1) for fraction
 
 # Processing options
 # Prompt template (can reference any column from the dataset)
