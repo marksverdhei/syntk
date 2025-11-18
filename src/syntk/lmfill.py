@@ -208,10 +208,10 @@ def annotate_difficulty(
 
     # Use cache if available
     if prompt in responses:
-        logger.debug(f"Using cached response for prompt")
+        logger.debug("Using cached response for prompt")
         return responses[prompt]
 
-    logger.debug(f"Making new API call (cache miss)")
+    logger.debug("Making new API call (cache miss)")
     response = get_chat_response(client, prompt, api_args, gen_args)
     responses[prompt] = response
     return response
