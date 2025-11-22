@@ -21,6 +21,13 @@ syntk = "syntk:cli.main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[project.optional-dependencies]
+tensorboard = ["torch>=2.0.0", "tensorboard>=2.11.0"]
+mlflow = ["mlflow>=2.0.0"]
+wandb = ["wandb>=0.15.0"]
+aim = ["aim>=3.17.0"]
+tracking = ["torch>=2.0.0", "tensorboard>=2.11.0", "mlflow>=2.0.0", "wandb>=0.15.0", "aim>=3.17.0"]
+
 [dependency-groups]
 dev = [
     "ipython",
