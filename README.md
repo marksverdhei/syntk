@@ -13,6 +13,7 @@ A synthetic data toolkit for generating and augmenting datasets using Large Lang
 - **OpenAI-Compatible APIs**: Works with OpenAI, OpenRouter, and any compatible endpoint
 - **Resume Support**: Automatically resumes interrupted processing
 - **Configurable**: YAML configuration files for reproducible pipelines
+- **Experiment Tracking**: Built-in support for TensorBoard, MLflow, W&B, and Aim
 
 ## Installation
 
@@ -102,6 +103,78 @@ View all available options:
 
 ```bash
 syntk column --help
+```
+
+## Experiment Tracking
+
+`syntk` supports experiment tracking with TensorBoard, MLflow, Weights & Biases, and Aim to monitor generation metrics in real-time.
+
+### Installation
+
+Install tracking dependencies (choose what you need):
+
+```bash
+# TensorBoard
+pip install syntk[tensorboard]
+
+# MLflow
+pip install syntk[mlflow]
+
+# Weights & Biases
+pip install syntk[wandb]
+
+# Aim
+pip install syntk[aim]
+
+# All trackers
+pip install syntk[tracking]
+```
+
+### Usage
+
+Add tracking configuration to your YAML file:
+
+```yaml
+# Enable experiment tracking (comma-separated for multiple)
+report_to: "tensorboard"  # Options: tensorboard, mlflow, wandb, aim
+run_name: "my_experiment"
+logging_dir: "./logs"  # Directory for logs or MLflow tracking URI
+```
+
+Or via command line:
+
+```bash
+syntk column config.yaml --report_to tensorboard --run_name my_experiment
+```
+
+### Tracked Metrics
+
+For inference/generation pipelines, `syntk` tracks:
+
+- **rows_processed**: Number of rows generated
+- **total_api_calls**: LLM API calls made
+- **cache_hits**: Responses served from cache
+- **cache_hit_rate**: Cache efficiency percentage
+- **rows_per_second**: Generation throughput
+- **avg_time_per_row**: Average generation time
+
+### Viewing Results
+
+**TensorBoard:**
+```bash
+tensorboard --logdir ./logs/tensorboard
+```
+
+**MLflow:**
+```bash
+mlflow ui --backend-store-uri ./logs
+```
+
+**W&B:** Visit the URL printed at run start
+
+**Aim:**
+```bash
+aim up --repo ./logs
 ```
 
 ## Available Pipelines
