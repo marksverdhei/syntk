@@ -50,6 +50,8 @@ class ExperimentTracker:
 
         for tracker_name in report_to:
             tracker_name = tracker_name.strip().lower()
+            if not tracker_name:
+                continue
             try:
                 if tracker_name == "tensorboard":
                     self._init_tensorboard()
