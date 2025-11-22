@@ -142,9 +142,22 @@ class TestRoundtrips:
             check_dtype=False
         )
 
+    def test_parquet_roundtrip(self, temp_dir, sample_dataframe):
+        """Test Parquet save and load preserves data."""
+        output_path = os.path.join(temp_dir, "test.parquet")
+
+        save_dataframe(sample_dataframe, output_path)
+        loaded_df = load_dataframe(output_path)
+
+        pd.testing.assert_frame_equal(
+            sample_dataframe,
+            loaded_df,
+            check_dtype=False
+        )
+
     def test_format_detection_case_insensitive(self, temp_dir, sample_dataframe):
         """Test that format detection works with different case extensions."""
-        for ext in ['.CSV', '.Json', '.JSONL', '.Tsv']:
+        for ext in ['.CSV', '.Json', '.JSONL', '.Tsv', '.Parquet']:
             output_path = os.path.join(temp_dir, f"test{ext}")
             save_dataframe(sample_dataframe, output_path)
             loaded_df = load_dataframe(output_path)
