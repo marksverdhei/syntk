@@ -1,6 +1,6 @@
 """Tests for experiment tracking functionality."""
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from syntk.tracking import (
     TrackingArguments,
     ExperimentTracker,
@@ -121,32 +121,32 @@ class TestExperimentTrackerWithMocks:
     @patch("syntk.tracking.ExperimentTracker._init_tensorboard")
     def test_tensorboard_initialization(self, mock_init):
         """Test TensorBoard tracker initialization."""
-        tracker = ExperimentTracker(report_to=["tensorboard"], run_name="test_run")
+        _tracker = ExperimentTracker(report_to=["tensorboard"], run_name="test_run")
         mock_init.assert_called_once()
 
     @patch("syntk.tracking.ExperimentTracker._init_mlflow")
     def test_mlflow_initialization(self, mock_init):
         """Test MLflow tracker initialization."""
-        tracker = ExperimentTracker(report_to=["mlflow"], run_name="test_run")
+        _tracker = ExperimentTracker(report_to=["mlflow"], run_name="test_run")
         mock_init.assert_called_once()
 
     @patch("syntk.tracking.ExperimentTracker._init_wandb")
     def test_wandb_initialization(self, mock_init):
         """Test W&B tracker initialization."""
-        tracker = ExperimentTracker(report_to=["wandb"], run_name="test_run")
+        _tracker = ExperimentTracker(report_to=["wandb"], run_name="test_run")
         mock_init.assert_called_once()
 
     @patch("syntk.tracking.ExperimentTracker._init_aim")
     def test_aim_initialization(self, mock_init):
         """Test Aim tracker initialization."""
-        tracker = ExperimentTracker(report_to=["aim"], run_name="test_run")
+        _tracker = ExperimentTracker(report_to=["aim"], run_name="test_run")
         mock_init.assert_called_once()
 
     @patch("syntk.tracking.ExperimentTracker._init_tensorboard")
     @patch("syntk.tracking.ExperimentTracker._init_wandb")
     def test_multiple_trackers_initialization(self, mock_wandb, mock_tb):
         """Test initialization with multiple trackers."""
-        tracker = ExperimentTracker(
+        _tracker = ExperimentTracker(
             report_to=["tensorboard", "wandb"],
             run_name="test_run"
         )
@@ -339,7 +339,7 @@ class TestTrackerNameNormalization:
     def test_tensorboard_case_insensitive(self, mock_init):
         """Test that tracker names are case-insensitive."""
         for name in ["tensorboard", "TensorBoard", "TENSORBOARD"]:
-            tracker = ExperimentTracker(report_to=[name])
+            _tracker = ExperimentTracker(report_to=[name])
             mock_init.assert_called()
             mock_init.reset_mock()
 
@@ -347,6 +347,6 @@ class TestTrackerNameNormalization:
     def test_mlflow_case_insensitive(self, mock_init):
         """Test MLflow name is case-insensitive."""
         for name in ["mlflow", "MLflow", "MLFLOW"]:
-            tracker = ExperimentTracker(report_to=[name])
+            _tracker = ExperimentTracker(report_to=[name])
             mock_init.assert_called()
             mock_init.reset_mock()
