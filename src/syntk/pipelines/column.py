@@ -221,6 +221,11 @@ def get_chat_response(
 
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
     """Save dataframe to file, detecting format from extension."""
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     output_file_lower = output_file.lower()
     if output_file_lower.endswith(".parquet"):
         df.to_parquet(output_file, index=False)
