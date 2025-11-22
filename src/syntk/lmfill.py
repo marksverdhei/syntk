@@ -5,7 +5,59 @@ from typing import Optional
 import pandas as pd
 from openai import OpenAI
 from tqdm import tqdm
-from transformers import HfArgumentParser
+
+try:
+    from transformers import HfArgumentParser
+except ImportError:
+    # Fallback to argparse if transformers is not installed
+    from argparse import ArgumentParser
+    import dataclasses
+
+    class HfArgumentParser:
+        """Minimal replacement for HfArgumentParser when transformers is not available."""
+        def __init__(self, dataclass_types):
+            self.dataclass_types = dataclass_types
+            self.parser = ArgumentParser()
+
+            for dataclass_type in dataclass_types:
+                for field in dataclasses.fields(dataclass_type):
+                    field_name = f"--{field.name}"
+                    field_metadata = field.metadata or {}
+                    help_text = field_metadata.get("help", "")
+
+                    kwargs = {"help": help_text}
+                    if field.default is not dataclasses.MISSING:
+                        kwargs["default"] = field.default
+                    elif field.default_factory is not dataclasses.MISSING:
+                        kwargs["default"] = field.default_factory()
+                    else:
+                        kwargs["required"] = True
+
+                    if field.type == Optional[str] or field.type == str:
+                        kwargs["type"] = str
+                    elif field.type == Optional[int] or field.type == int:
+                        kwargs["type"] = int
+                    elif field.type == Optional[float] or field.type == float:
+                        kwargs["type"] = float
+
+                    self.parser.add_argument(field_name, **kwargs)
+
+        def parse_args_into_dataclasses(self, args=None):
+            namespace = self.parser.parse_args(args)
+            result = []
+            for dataclass_type in self.dataclass_types:
+                field_names = {f.name for f in dataclasses.fields(dataclass_type)}
+                kwargs = {k: v for k, v in vars(namespace).items() if k in field_names}
+                result.append(dataclass_type(**kwargs))
+            return tuple(result)
+
+        def parse_dict(self, config_dict, allow_extra_keys=False):
+            result = []
+            for dataclass_type in self.dataclass_types:
+                field_names = {f.name for f in dataclasses.fields(dataclass_type)}
+                kwargs = {k: v for k, v in config_dict.items() if k in field_names}
+                result.append(dataclass_type(**kwargs))
+            return tuple(result)
 
 tqdm.pandas()
 

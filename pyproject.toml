@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "openai>=2.8.1",
+    "pandas>=2.3.3",
+    "pyyaml>=6.0",
+    "tqdm>=4.67.1",
+    "typer>=0.20.0",
+]
 
 [project.scripts]
 syntk = "syntk:cli.main"
