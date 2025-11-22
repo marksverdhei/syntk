@@ -1,0 +1,23 @@
+# Configuration for annotate_difficulty program
+
+# API configuration
+base_url: https://openrouter.ai/api/v1
+api_key_env: "OPENROUTER_API_KEY"
+model: "anthropic/claude-sonnet-4.5"
+
+# Input/output
+input_file: "hf://datasets/ltg/norec_sentence/ternary/validation-00000-of-00001.parquet"
+output_file: "data/validation_annotated_difficulty.parquet"
+output_column: "difficulty_score_sonnet4.5_or" # Name of the generated output column
+limit: 10 # null for all, integer for count, float (0-1) for fraction
+
+# Processing options
+# Prompt template (can reference any column from the dataset)
+prompt_template: |-
+  Analyze the difficulty of classifying the sentiment of the following Norwegian text:
+
+  Text: {review}
+
+  Rate the difficulty on a scale from 1 to 10. Reply with only the number.
+
+save_interval: 100  # Save progress every N rows (0 to only save at end)
