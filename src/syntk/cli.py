@@ -3,11 +3,13 @@ import typer
 
 app = typer.Typer(
     help="Syntk - Toolkit for synthetic data generation and processing",
-    no_args_is_help=True
+    no_args_is_help=True,
 )
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def column(ctx: typer.Context):
     """Fill column values using LLM."""
     from syntk.pipelines import column as column_pipeline

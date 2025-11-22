@@ -12,9 +12,20 @@ except ImportError:
     # Fallback to argparse if transformers is not installed
     from argparse import ArgumentParser
     import dataclasses
+    from typing import get_origin, get_args
+
+    def _get_base_type(field_type):
+        """Extract base type from Optional or direct type."""
+        origin = get_origin(field_type)
+        if origin is not None:  # Union type (Optional is Union[T, None])
+            args = get_args(field_type)
+            # Get the non-None type from Optional
+            return next((arg for arg in args if arg is not type(None)), None)
+        return field_type
 
     class HfArgumentParser:
         """Minimal replacement for HfArgumentParser when transformers is not available."""
+
         def __init__(self, dataclass_types):
             self.dataclass_types = dataclass_types
             self.parser = ArgumentParser()
@@ -33,11 +44,12 @@ except ImportError:
                     else:
                         kwargs["required"] = True
 
-                    if field.type == Optional[str] or field.type == str:
+                    base_type = _get_base_type(field.type)
+                    if base_type is str:
                         kwargs["type"] = str
-                    elif field.type == Optional[int] or field.type == int:
+                    elif base_type is int:
                         kwargs["type"] = int
-                    elif field.type == Optional[float] or field.type == float:
+                    elif base_type is float:
                         kwargs["type"] = float
 
                     self.parser.add_argument(field_name, **kwargs)
@@ -58,6 +70,7 @@ except ImportError:
                 kwargs = {k: v for k, v in config_dict.items() if k in field_names}
                 result.append(dataclass_type(**kwargs))
             return tuple(result)
+
 
 tqdm.pandas()
 
