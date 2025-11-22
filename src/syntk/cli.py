@@ -9,16 +9,16 @@ app = typer.Typer(
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def column(ctx: typer.Context):
-    """Fill column values using LLM (equivalent to lmfill)."""
-    from syntk import lmfill
+    """Fill column values using LLM."""
+    from syntk.pipelines import column as column_pipeline
 
-    # Restore original sys.argv to pass all arguments to lmfill
+    # Restore original sys.argv to pass all arguments to column pipeline
     # Remove 'syntk' and 'column' from argv, keeping the rest
     original_argv = sys.argv.copy()
     sys.argv = [sys.argv[0]] + ctx.args
 
     try:
-        lmfill.main()
+        column_pipeline.main()
     finally:
         sys.argv = original_argv
 
