@@ -1,0 +1,26 @@
+# Configuration for annotate_difficulty program
+
+# API configuration
+base_url: http://localhost:8000/v1
+api_key_env: "A"
+model: "GLM4.5-Air"
+
+# Input/output
+input_file: "hf://datasets/marksverdhei/norwegian-wordnet-examples/sense_examples_table.tsv"
+output_file: "data/definitions_glm4.5-Air-q4_k_m.parquet"
+output_column: "definitions_4.5air" # Name of the generated output column
+limit: 3 # null for all, integer for count, float (0-1) for fraction
+
+# Processing options
+# Prompt template (can reference any column from the dataset)
+prompt_template: |-
+  Skriv definisjonen av det følgende oret slik at den inneholder en forklaring av ordets eksakt betydning i akkurat, og kun den gitte setningen på Norsk bokmål.
+
+  Ord: {wordnet_form}
+
+  Form: {sentence_form}
+
+  Setning: {example_sentence}
+
+  Svar med kun definisjonsteksten og intet annet.
+save_interval: 100  # Save progress every N rows (0 to only save at end)
