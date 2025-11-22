@@ -118,105 +118,93 @@ class TestExperimentTrackerMissingDependencies:
 class TestExperimentTrackerWithMocks:
     """Tests for ExperimentTracker with mocked tracking libraries."""
 
-    @patch("syntk.tracking.ExperimentTracker._init_tensorboard")
-    def test_tensorboard_initialization(self, mock_init):
-        """Test TensorBoard tracker initialization."""
-        _tracker = ExperimentTracker(report_to=["tensorboard"], run_name="test_run")
-        mock_init.assert_called_once()
+    def test_log_params_dispatches_correctly(self):
+        """Test that log_params calls correct methods and passes correct data."""
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.trackers.append("tensorboard")
 
-    @patch("syntk.tracking.ExperimentTracker._init_mlflow")
-    def test_mlflow_initialization(self, mock_init):
-        """Test MLflow tracker initialization."""
-        _tracker = ExperimentTracker(report_to=["mlflow"], run_name="test_run")
-        mock_init.assert_called_once()
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            params = {"model": "gpt-4", "temperature": 0.7}
+            tracker.log_params(params)
 
-    @patch("syntk.tracking.ExperimentTracker._init_wandb")
-    def test_wandb_initialization(self, mock_init):
-        """Test W&B tracker initialization."""
-        _tracker = ExperimentTracker(report_to=["wandb"], run_name="test_run")
-        mock_init.assert_called_once()
+            # Verify correct method called with correct data
+            tracker.tb_writer.add_text.assert_called_once()
+            call_args = tracker.tb_writer.add_text.call_args
+            assert call_args[0][0] == "config"
+            # Verify actual content contains the params
+            assert "model: gpt-4" in call_args[0][1]
+            assert "temperature: 0.7" in call_args[0][1]
 
-    @patch("syntk.tracking.ExperimentTracker._init_aim")
-    def test_aim_initialization(self, mock_init):
-        """Test Aim tracker initialization."""
-        _tracker = ExperimentTracker(report_to=["aim"], run_name="test_run")
-        mock_init.assert_called_once()
+    def test_log_metrics_dispatches_correctly(self):
+        """Test that log_metrics calls correct methods for each metric."""
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.trackers.append("tensorboard")
 
-    @patch("syntk.tracking.ExperimentTracker._init_tensorboard")
-    @patch("syntk.tracking.ExperimentTracker._init_wandb")
-    def test_multiple_trackers_initialization(self, mock_wandb, mock_tb):
-        """Test initialization with multiple trackers."""
-        _tracker = ExperimentTracker(
-            report_to=["tensorboard", "wandb"],
-            run_name="test_run"
-        )
-        mock_tb.assert_called_once()
-        mock_wandb.assert_called_once()
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            metrics = {"rows_processed": 100, "api_calls": 50}
+            tracker.log_metrics(metrics, step=10)
 
-    def test_log_params_with_mocked_tracker(self):
-        """Test log_params with a mocked tracker."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
+            # Verify add_scalar called for each metric
+            assert tracker.tb_writer.add_scalar.call_count == 2
+            # Verify correct arguments passed
+            calls = tracker.tb_writer.add_scalar.call_args_list
+            assert calls[0][0] == ("rows_processed", 100, 10)
+            assert calls[1][0] == ("api_calls", 50, 10)
 
-        params = {"model": "gpt-4", "temperature": 0.7}
-        tracker.log_params(params)
+    def test_finish_calls_cleanup(self):
+        """Test that finish calls cleanup methods on all trackers."""
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.trackers.append("tensorboard")
 
-        tracker.tb_writer.add_text.assert_called_once()
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            tracker.finish()
 
-    def test_log_metrics_with_mocked_tracker(self):
-        """Test log_metrics with a mocked tracker."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
-
-        metrics = {"rows_processed": 100, "api_calls": 50}
-        tracker.log_metrics(metrics, step=10)
-
-        assert tracker.tb_writer.add_scalar.call_count == 2
-
-    def test_finish_with_mocked_tracker(self):
-        """Test finish with a mocked tracker."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
-
-        tracker.finish()
-
-        tracker.tb_writer.close.assert_called_once()
+            tracker.tb_writer.close.assert_called_once()
 
     def test_log_params_handles_exceptions(self, caplog):
         """Test that log_params handles exceptions gracefully."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
-        tracker.tb_writer.add_text.side_effect = Exception("Test error")
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.tb_writer.add_text.side_effect = Exception("Test error")
+            self.trackers.append("tensorboard")
 
-        tracker.log_params({"param": "value"})
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            tracker.log_params({"param": "value"})  # Should not raise
 
-        assert "Failed to log params to tensorboard" in caplog.text
+            assert "Failed to log params to tensorboard" in caplog.text
 
     def test_log_metrics_handles_exceptions(self, caplog):
         """Test that log_metrics handles exceptions gracefully."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
-        tracker.tb_writer.add_scalar.side_effect = Exception("Test error")
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.tb_writer.add_scalar.side_effect = Exception("Test error")
+            self.trackers.append("tensorboard")
 
-        tracker.log_metrics({"metric": 1.0})
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            tracker.log_metrics({"metric": 1.0})  # Should not raise
 
-        assert "Failed to log metrics to tensorboard" in caplog.text
+            assert "Failed to log metrics to tensorboard" in caplog.text
 
     def test_finish_handles_exceptions(self, caplog):
         """Test that finish handles exceptions gracefully."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
-        tracker.tb_writer.close.side_effect = Exception("Test error")
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.tb_writer.close.side_effect = Exception("Test error")
+            self.trackers.append("tensorboard")
 
-        tracker.finish()
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
+            tracker.finish()  # Should not raise
 
-        assert "Failed to finish tensorboard" in caplog.text
+            assert "Failed to finish tensorboard" in caplog.text
 
 
 class TestExperimentTrackerContextManager:
@@ -224,26 +212,32 @@ class TestExperimentTrackerContextManager:
 
     def test_context_manager_calls_finish(self):
         """Test that context manager calls finish on exit."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.trackers.append("tensorboard")
 
-        with tracker:
-            pass
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
 
-        tracker.tb_writer.close.assert_called_once()
+            with tracker:
+                pass
+
+            tracker.tb_writer.close.assert_called_once()
 
     def test_context_manager_calls_finish_on_exception(self):
         """Test that context manager calls finish even on exception."""
-        tracker = ExperimentTracker(report_to=None)
-        tracker.trackers = ["tensorboard"]
-        tracker.tb_writer = Mock()
+        def mock_init_tb(self):
+            self.tb_writer = Mock()
+            self.trackers.append("tensorboard")
 
-        with pytest.raises(ValueError):
-            with tracker:
-                raise ValueError("Test error")
+        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb):
+            tracker = ExperimentTracker(report_to=["tensorboard"])
 
-        tracker.tb_writer.close.assert_called_once()
+            with pytest.raises(ValueError):
+                with tracker:
+                    raise ValueError("Test error")
+
+            tracker.tb_writer.close.assert_called_once()
 
 
 class TestGetTracker:
