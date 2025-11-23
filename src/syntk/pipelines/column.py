@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 def annotate_difficulty(
-    row,
+    row: pd.Series,
     client: OpenAI,
     api_args: APIArguments,
     gen_args: GenerationArguments,
     data_args: DataArguments,
     proc_args: ProcessingArguments,
-    responses: dict,
+    responses: dict[str, str],
 ) -> str:
     """Annotate a single row with difficulty rating."""
     # Create a dictionary of all column values for formatting
