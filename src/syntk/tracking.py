@@ -68,8 +68,13 @@ class ExperimentTracker:
 
     def _init_tensorboard(self):
         """Initialize TensorBoard tracker."""
-        from torch.utils.tensorboard import SummaryWriter
         import os
+
+        # Try tensorboardX first (standalone), fall back to torch.utils.tensorboard
+        try:
+            from tensorboardX import SummaryWriter
+        except ImportError:
+            from torch.utils.tensorboard import SummaryWriter
 
         log_dir = os.path.join(self.logging_dir, "tensorboard", self.run_name)
         self.tb_writer = SummaryWriter(log_dir)

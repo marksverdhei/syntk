@@ -14,7 +14,7 @@ max_tokens: 200
 
 # Data Configuration
 input_file: "hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parquet"
-output_file: "annotated_difficulty.parquet"
+output_file: "annotated_difficulty2.parquet"
 text_column: "review"
 output_column: "difficulty_annotation"
 reasoning_content_column: "reasoning_trace"  # Save reasoning traces
@@ -31,6 +31,6 @@ prompt_template: |
 
   Rate the difficulty on a scale of 1-5 and provide a brief explanation.
 
-# report_to: "tensorboard"  # Change to "wandb,mlflow" to use multiple trackers
+report_to: "wandb"  # Change to "wandb,mlflow" to use multiple trackers
 run_name: "difficulty_annotation_experiment"
 logging_dir: "./logs"  # Directory for TensorBoard/Aim logs, or MLflow tracking URI
