@@ -1,10 +1,12 @@
 import os
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 import pandas as pd
 from openai import OpenAI
 from tqdm import tqdm
+from syntk.tracking import TrackingArguments, get_tracker
 
 try:
     from transformers import HfArgumentParser
@@ -76,8 +78,6 @@ tqdm.pandas()
 
 logger = logging.getLogger(__name__)
 
-responses = {}
-
 
 @dataclass
 class ConfigArguments:
@@ -132,19 +132,39 @@ class DataArguments:
     """Arguments for data input/output."""
 
     input_file: str = field(
-        default="hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parquet",
-        metadata={"help": "Input parquet file path"},
+        default="input.parquet",
+        metadata={
+            "help": "Input file path (supports .parquet, .csv, .json, .jsonl, .tsv)"
+        },
     )
     output_file: str = field(
-        default="annotated_difficulty.parquet",
-        metadata={"help": "Output parquet file path"},
+        default="output.parquet",
+        metadata={
+            "help": "Output file path (supports .parquet, .csv, .json, .jsonl, .tsv)"
+        },
     )
     text_column: str = field(
-        default="review", metadata={"help": "Name of the text column in the dataset"}
+        default="text", metadata={"help": "Name of the text column in the dataset"}
     )
     output_column: str = field(
-        default="difficulty_annotation",
+        default="generated",
         metadata={"help": "Name of the generated output column"},
+    )
+    reasoning_content_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Optional column name to save reasoning traces (for reasoning models)"
+        },
+    )
+    save_stop_reason: bool = field(
+        default=False,
+        metadata={"help": "Save stop/finish reason to a column named 'stop_reason'"},
+    )
+    raw_api_json_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path to save raw API requests/responses as JSONL (one JSON per line)"
+        },
     )
     limit: Optional[float] = field(
         default=None,
@@ -159,13 +179,14 @@ class ProcessingArguments:
     """Arguments for processing configuration."""
 
     prompt_template: str = field(
-        default="""Analyze the difficulty of classifying the sentiment of the following Norwegian text:
-
-Text: {text}
-True sentiment: {sentiment}
-
-Rate the difficulty on a scale of 1-5 and provide a brief explanation.""",
-        metadata={"help": "Prompt template with {text} and {sentiment} placeholders"},
+        default="Process the following text:\n\n{text}",
+        metadata={
+            "help": "Prompt template with placeholders for column names (e.g., {text}, {label})"
+        },
+    )
+    log_interval: int = field(
+        default=10,
+        metadata={"help": "Log metrics every N rows (0 to only log at end)"},
     )
     save_interval: int = field(
         default=100,
@@ -174,8 +195,12 @@ Rate the difficulty on a scale of 1-5 and provide a brief explanation.""",
 
 
 def get_chat_response(
-    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments
-) -> str:
+    client: OpenAI,
+    prompt: str,
+    api_args: APIArguments,
+    gen_args: GenerationArguments,
+    return_raw: bool = False,
+) -> dict:
     """Get response from OpenAI-compatible API."""
     logger.debug(f"API Call - Model: {api_args.model}")
     logger.debug(
@@ -206,17 +231,42 @@ def get_chat_response(
 
     response = client.chat.completions.create(**kwargs)
 
-    response_text = response.choices[0].message.content
+    message = response.choices[0].message
+    content = message.content
+    reasoning_content = getattr(message, "reasoning_content", None)
+    stop_reason = response.choices[0].finish_reason
+
+    # Log warning if content is None
+    if content is None:
+        logger.warning(
+            f"API response returned None content. Stop reason: {stop_reason}"
+        )
+
     logger.debug(
-        f"API Response: {response_text[:200]}..."
-        if len(response_text) > 200
-        else f"API Response: {response_text}"
+        f"API Response: {content[:200]}..."
+        if content and len(content) > 200
+        else f"API Response: {content}"
     )
     logger.debug(
         f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}"
     )
 
-    return response_text
+    result = {
+        "content": content,
+        "reasoning_content": reasoning_content,
+        "stop_reason": stop_reason,
+    }
+
+    # Add raw request/response data if requested
+    if return_raw:
+        result["raw"] = {
+            "request": kwargs,
+            "response": response.model_dump()
+            if hasattr(response, "model_dump")
+            else response.dict(),
+        }
+
+    return result
 
 
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
@@ -243,6 +293,17 @@ def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
         )
 
 
+def find_available_column_name(df: pd.DataFrame, base_name: str) -> str:
+    """Find an available column name by appending numbers if necessary."""
+    if base_name not in df.columns:
+        return base_name
+
+    counter = 1
+    while f"{base_name}_{counter}" in df.columns:
+        counter += 1
+    return f"{base_name}_{counter}"
+
+
 def load_dataframe(input_file: str) -> pd.DataFrame:
     """Load dataframe from file, detecting format from extension."""
     input_file_lower = input_file.lower()
@@ -260,15 +321,46 @@ def load_dataframe(input_file: str) -> pd.DataFrame:
         )
 
 
-def annotate_difficulty(
+def save_raw_api_call(file_path: str, row_index: int, result: dict) -> None:
+    """Append raw API request/response to JSONL file.
+
+    Args:
+        file_path: Path to JSONL file
+        row_index: Index of the row being processed
+        result: Result dict containing raw API data
+    """
+    import json
+    import time
+
+    if "raw" not in result:
+        return
+
+    record = {
+        "timestamp": time.time(),
+        "row_index": row_index,
+        "request": result["raw"]["request"],
+        "response": result["raw"]["response"],
+    }
+
+    # Append to JSONL file (one JSON object per line)
+    with open(file_path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def process_row(
     row,
     client: OpenAI,
     api_args: APIArguments,
     gen_args: GenerationArguments,
     data_args: DataArguments,
     proc_args: ProcessingArguments,
-) -> str:
-    """Annotate a single row with difficulty rating."""
+    responses: dict,
+) -> dict:
+    """Process a single row by generating text based on the prompt template.
+
+    Returns:
+        dict with keys: content, reasoning_content, stop_reason, and optionally raw
+    """
     # Create a dictionary of all column values for formatting
     # This allows any column to be referenced in the prompt template
     format_dict = row.to_dict()
@@ -282,15 +374,21 @@ def annotate_difficulty(
         return responses[prompt]
 
     logger.debug("Making new API call (cache miss)")
-    response = get_chat_response(client, prompt, api_args, gen_args)
+    return_raw = data_args.raw_api_json_path is not None
+    response = get_chat_response(
+        client, prompt, api_args, gen_args, return_raw=return_raw
+    )
     responses[prompt] = response
     return response
 
 
 def main() -> None:
-    """Main function to annotate difficulty ratings."""
+    """Main function to process dataset rows with LLM-generated content."""
     import sys
     import yaml
+
+    # Initialize response cache (local to this run)
+    responses = {}
 
     # Check if first positional argument is a YAML config file
     config_file = None
@@ -311,9 +409,10 @@ def main() -> None:
             GenerationArguments,
             DataArguments,
             ProcessingArguments,
+            TrackingArguments,
         )
     )
-    config_args, api_args, gen_args, data_args, proc_args = (
+    config_args, api_args, gen_args, data_args, proc_args, track_args = (
         parser.parse_args_into_dataclasses(args=args_to_parse)
     )
 
@@ -328,11 +427,21 @@ def main() -> None:
 
         # Parse from flattened YAML dict
         yaml_parser = HfArgumentParser(
-            (APIArguments, GenerationArguments, DataArguments, ProcessingArguments)
+            (
+                APIArguments,
+                GenerationArguments,
+                DataArguments,
+                ProcessingArguments,
+                TrackingArguments,
+            )
         )
-        api_args_yaml, gen_args_yaml, data_args_yaml, proc_args_yaml = (
-            yaml_parser.parse_dict(config_dict, allow_extra_keys=True)
-        )
+        (
+            api_args_yaml,
+            gen_args_yaml,
+            data_args_yaml,
+            proc_args_yaml,
+            track_args_yaml,
+        ) = yaml_parser.parse_dict(config_dict, allow_extra_keys=True)
 
         # For each argument, use CLI value if it differs from default, otherwise use YAML value
         for args_obj, yaml_obj in [
@@ -340,6 +449,7 @@ def main() -> None:
             (gen_args, gen_args_yaml),
             (data_args, data_args_yaml),
             (proc_args, proc_args_yaml),
+            (track_args, track_args_yaml),
         ]:
             for field_name in args_obj.__dataclass_fields__:
                 cli_value = getattr(args_obj, field_name)
@@ -366,6 +476,28 @@ def main() -> None:
         base_url=api_args.base_url,
         api_key=api_key,
     )
+
+    # Initialize experiment tracker
+    tracker = get_tracker(track_args)
+
+    # Log all configuration parameters
+    config_params = {
+        "model": api_args.model,
+        "base_url": api_args.base_url,
+        "temperature": gen_args.temperature,
+        "max_tokens": gen_args.max_tokens,
+        "top_p": gen_args.top_p,
+        "frequency_penalty": gen_args.frequency_penalty,
+        "presence_penalty": gen_args.presence_penalty,
+        "input_file": data_args.input_file,
+        "output_file": data_args.output_file,
+        "text_column": data_args.text_column,
+        "output_column": data_args.output_column,
+        "limit": data_args.limit,
+        "log_interval": proc_args.log_interval,
+        "save_interval": proc_args.save_interval,
+    }
+    tracker.log_params({k: v for k, v in config_params.items() if v is not None})
 
     # Check if we can resume from existing output file
     resuming = False
@@ -420,6 +552,23 @@ def main() -> None:
     if not resuming or data_args.output_column not in df.columns:
         df[data_args.output_column] = pd.NA
 
+    # Initialize optional columns for reasoning content and stop reason
+    actual_stop_reason_column = None
+    if data_args.save_stop_reason:
+        actual_stop_reason_column = find_available_column_name(df, "stop_reason")
+        if not resuming or actual_stop_reason_column not in df.columns:
+            df[actual_stop_reason_column] = pd.NA
+        logger.info(
+            f"Stop reasons will be saved to column: {actual_stop_reason_column}"
+        )
+
+    if data_args.reasoning_content_column:
+        if not resuming or data_args.reasoning_content_column not in df.columns:
+            df[data_args.reasoning_content_column] = pd.NA
+        logger.info(
+            f"Reasoning content will be saved to column: {data_args.reasoning_content_column}"
+        )
+
     # Identify rows to process (those with missing values in output column)
     rows_to_process = df[df[data_args.output_column].isna()].index.tolist()
 
@@ -427,17 +576,64 @@ def main() -> None:
         logger.info("All rows already processed. Nothing to do.")
         return
 
+    # Initialize raw API JSON file if specified (clear file if not resuming)
+    if data_args.raw_api_json_path and not resuming:
+        raw_dir = os.path.dirname(data_args.raw_api_json_path)
+        if raw_dir:
+            os.makedirs(raw_dir, exist_ok=True)
+        # Create empty file (or truncate if exists)
+        open(data_args.raw_api_json_path, "w").close()
+        logger.info(f"Raw API data will be saved to: {data_args.raw_api_json_path}")
+
     logger.info(f"Processing {len(rows_to_process)} rows...")
+
+    # Track start time
+    start_time = time.time()
 
     # Process rows one at a time with periodic checkpointing
     processed_count = 0
+    initial_api_calls = len(responses)
+
     for idx in tqdm(rows_to_process, desc="Generating"):
         row = df.loc[idx]
-        result = annotate_difficulty(
-            row, client, api_args, gen_args, data_args, proc_args
+        result = process_row(
+            row, client, api_args, gen_args, data_args, proc_args, responses
         )
-        df.at[idx, data_args.output_column] = result
+
+        # Save content to output column
+        df.at[idx, data_args.output_column] = result["content"]
+
+        # Save reasoning content if column is specified
+        if data_args.reasoning_content_column:
+            df.at[idx, data_args.reasoning_content_column] = result["reasoning_content"]
+
+        # Save stop reason if enabled
+        if actual_stop_reason_column:
+            df.at[idx, actual_stop_reason_column] = result["stop_reason"]
+
+        # Save raw API request/response if enabled
+        if data_args.raw_api_json_path:
+            save_raw_api_call(data_args.raw_api_json_path, idx, result)
+
         processed_count += 1
+
+        # Log metrics periodically
+        if proc_args.log_interval > 0 and processed_count % proc_args.log_interval == 0:
+            elapsed_time = time.time() - start_time
+            tracker.log_metrics(
+                {
+                    "rows_processed": processed_count,
+                    "total_api_calls": len(responses),
+                    "new_api_calls": len(responses) - initial_api_calls,
+                    "cache_hits": processed_count
+                    - (len(responses) - initial_api_calls),
+                    "elapsed_seconds": elapsed_time,
+                    "rows_per_second": processed_count / elapsed_time
+                    if elapsed_time > 0
+                    else 0,
+                },
+                step=processed_count,
+            )
 
         # Save checkpoint if save_interval is set and we've hit the interval
         if (
@@ -449,11 +645,37 @@ def main() -> None:
             )
             save_dataframe(df, data_args.output_file)
 
+    # Calculate final metrics
+    total_time = time.time() - start_time
+    total_api_calls = len(responses) - initial_api_calls
+    cache_hit_rate = (
+        (processed_count - total_api_calls) / processed_count
+        if processed_count > 0
+        else 0
+    )
+
+    # Log final summary (single scalars, not time series)
+    tracker.log_summary(
+        {
+            "total_rows_processed": processed_count,
+            "total_api_calls": total_api_calls,
+            "total_cache_hits": processed_count - total_api_calls,
+            "cache_hit_rate": cache_hit_rate,
+            "total_time_seconds": total_time,
+            "avg_time_per_row": total_time / processed_count
+            if processed_count > 0
+            else 0,
+        }
+    )
+
     # Final save
-    logger.info(f"Saving final annotated data to {data_args.output_file}")
+    logger.info(f"Saving final processed data to {data_args.output_file}")
     save_dataframe(df, data_args.output_file)
-    logger.info(f"Successfully saved {len(df)} annotated samples")
+    logger.info(f"Successfully saved {len(df)} processed samples")
     logger.info(f"Total unique API calls made: {len(responses)} (rest were cached)")
+
+    # Finish tracking
+    tracker.finish()
 
 
 if __name__ == "__main__":
