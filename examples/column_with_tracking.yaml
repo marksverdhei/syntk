@@ -31,6 +31,7 @@ prompt_template: |
 
   Rate the difficulty on a scale of 1-5 and provide a brief explanation.
 
-report_to: "wandb"  # Change to "wandb,mlflow" to use multiple trackers
+# report_to: "wandb"  # Change to "wandb,mlflow" to use multiple trackers
+report_to: "trackio"
 run_name: "difficulty_annotation_experiment"
 logging_dir: "./logs"  # Directory for TensorBoard/Aim logs, or MLflow tracking URI

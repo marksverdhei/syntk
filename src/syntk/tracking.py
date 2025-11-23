@@ -1,7 +1,7 @@
 """Experiment tracking integrations for syntk.
 
 Simplified tracking integration inspired by TRL and LLaMA-Factory.
-Supports TensorBoard, MLflow, W&B, and Aim through optional dependencies.
+Supports TensorBoard, MLflow, W&B, Trackio, and Aim through optional dependencies.
 """
 
 import logging
@@ -21,7 +21,7 @@ class TrackingArguments:
     report_to: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Experiment trackers to use (comma-separated): tensorboard, mlflow, wandb, aim. None to disable."
+            "help": "Experiment trackers to use (comma-separated): tensorboard, mlflow, wandb, aim, trackio. None to disable."
         },
     )
     run_name: Optional[str] = field(
@@ -57,8 +57,9 @@ class ExperimentTracker:
                     self._init_tensorboard()
                 elif tracker_name == "mlflow":
                     self._init_mlflow()
-                elif tracker_name == "wandb":
-                    self._init_wandb()
+                elif tracker_name in ("wandb", "trackio"):
+                    # trackio is wandb API-compatible, use same code path
+                    self._init_wandb(use_trackio=(tracker_name == "trackio"))
                 elif tracker_name == "aim":
                     self._init_aim()
                 else:
@@ -92,14 +93,24 @@ class ExperimentTracker:
         self.trackers.append("mlflow")
         logger.info(f"MLflow run started: {mlflow.active_run().info.run_id}")
 
-    def _init_wandb(self):
-        """Initialize W&B tracker."""
-        import wandb
+    def _init_wandb(self, use_trackio=False):
+        """Initialize W&B or Trackio tracker (trackio is wandb API-compatible)."""
+        if use_trackio:
+            import trackio as wandb
+            tracker_name = "trackio"
+        else:
+            import wandb
+            tracker_name = "wandb"
 
         wandb.init(project="syntk", name=self.run_name)
         self.wandb = wandb
-        self.trackers.append("wandb")
-        logger.info(f"W&B run: {wandb.run.url if wandb.run else 'initialized'}")
+        self.trackers.append(tracker_name)
+
+        # Get run info (trackio doesn't have .url attribute)
+        if wandb.run and hasattr(wandb.run, 'url'):
+            logger.info(f"{tracker_name.capitalize()} run: {wandb.run.url}")
+        else:
+            logger.info(f"{tracker_name.capitalize()} run initialized: {self.run_name}")
 
     def _init_aim(self):
         """Initialize Aim tracker."""
@@ -121,7 +132,7 @@ class ExperimentTracker:
                     self.tb_writer.add_text("config", params_text)
                 elif tracker == "mlflow":
                     self.mlflow.log_params(params)
-                elif tracker == "wandb":
+                elif tracker in ("wandb", "trackio"):
                     self.wandb.config.update(params)
                 elif tracker == "aim":
                     for k, v in params.items():
@@ -141,7 +152,7 @@ class ExperimentTracker:
                         self.tb_writer.add_scalar(k, v, step or 0)
                 elif tracker == "mlflow":
                     self.mlflow.log_metrics(metrics, step=step)
-                elif tracker == "wandb":
+                elif tracker in ("wandb", "trackio"):
                     self.wandb.log(metrics, step=step)
                 elif tracker == "aim":
                     for k, v in metrics.items():
@@ -157,7 +168,7 @@ class ExperimentTracker:
                     self.tb_writer.close()
                 elif tracker == "mlflow":
                     self.mlflow.end_run()
-                elif tracker == "wandb":
+                elif tracker in ("wandb", "trackio"):
                     self.wandb.finish()
                 elif tracker == "aim":
                     self.aim_run.close()
