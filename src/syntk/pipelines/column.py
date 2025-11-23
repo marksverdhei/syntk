@@ -78,8 +78,6 @@ tqdm.pandas()
 
 logger = logging.getLogger(__name__)
 
-responses = {}
-
 
 @dataclass
 class ConfigArguments:
@@ -269,6 +267,7 @@ def annotate_difficulty(
     gen_args: GenerationArguments,
     data_args: DataArguments,
     proc_args: ProcessingArguments,
+    responses: dict,
 ) -> str:
     """Annotate a single row with difficulty rating."""
     # Create a dictionary of all column values for formatting
@@ -293,6 +292,9 @@ def main() -> None:
     """Main function to annotate difficulty ratings."""
     import sys
     import yaml
+
+    # Initialize response cache (local to this run)
+    responses = {}
 
     # Check if first positional argument is a YAML config file
     config_file = None
