@@ -170,6 +170,10 @@ class ProcessingArguments:
         default="Process the following text:\n\n{text}",
         metadata={"help": "Prompt template with placeholders for column names (e.g., {text}, {label})"},
     )
+    log_interval: int = field(
+        default=10,
+        metadata={"help": "Log metrics every N rows (0 to only log at end)"},
+    )
     save_interval: int = field(
         default=100,
         metadata={"help": "Save progress every N rows (0 to only save at end)"},
@@ -422,6 +426,7 @@ def main() -> None:
         "text_column": data_args.text_column,
         "output_column": data_args.output_column,
         "limit": data_args.limit,
+        "log_interval": proc_args.log_interval,
         "save_interval": proc_args.save_interval,
     }
     tracker.log_params({k: v for k, v in config_params.items() if v is not None})
@@ -528,7 +533,7 @@ def main() -> None:
         processed_count += 1
 
         # Log metrics periodically
-        if processed_count % 10 == 0:
+        if proc_args.log_interval > 0 and processed_count % proc_args.log_interval == 0:
             elapsed_time = time.time() - start_time
             tracker.log_metrics(
                 {
@@ -557,8 +562,8 @@ def main() -> None:
     total_api_calls = len(responses) - initial_api_calls
     cache_hit_rate = (processed_count - total_api_calls) / processed_count if processed_count > 0 else 0
 
-    # Log final metrics
-    tracker.log_metrics(
+    # Log final summary (single scalars, not time series)
+    tracker.log_summary(
         {
             "total_rows_processed": processed_count,
             "total_api_calls": total_api_calls,

@@ -19,9 +19,10 @@ text_column: "review"
 output_column: "difficulty_annotation"
 reasoning_content_column: "reasoning_trace"  # Save reasoning traces
 save_stop_reason: true  # Save stop reasons
-limit: 10  # Process only 100 samples for this example
+limit: 100  # Process only 100 samples for this example
 
 # Processing Configuration
+log_interval: 1
 save_interval: 10
 prompt_template: |
   Analyze the difficulty of classifying the sentiment of the following Norwegian text:
@@ -32,6 +33,6 @@ prompt_template: |
   Rate the difficulty on a scale of 1-5 and provide a brief explanation.
 
 # report_to: "wandb"  # Change to "wandb,mlflow" to use multiple trackers
-report_to: "trackio"
+report_to: "trackio,wandb"
 run_name: "difficulty_annotation_experiment"
 logging_dir: "./logs"  # Directory for TensorBoard/Aim logs, or MLflow tracking URI

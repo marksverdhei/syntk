@@ -96,19 +96,21 @@ class ExperimentTracker:
     def _init_wandb(self, use_trackio=False):
         """Initialize W&B or Trackio tracker (trackio is wandb API-compatible)."""
         if use_trackio:
-            import trackio as wandb
+            import trackio as wandb_module
             tracker_name = "trackio"
+            attr_name = "trackio"
         else:
-            import wandb
+            import wandb as wandb_module
             tracker_name = "wandb"
+            attr_name = "wandb"
 
-        wandb.init(project="syntk", name=self.run_name)
-        self.wandb = wandb
+        wandb_module.init(project="syntk", name=self.run_name)
+        setattr(self, attr_name, wandb_module)
         self.trackers.append(tracker_name)
 
         # Get run info (trackio doesn't have .url attribute)
-        if wandb.run and hasattr(wandb.run, 'url'):
-            logger.info(f"{tracker_name.capitalize()} run: {wandb.run.url}")
+        if wandb_module.run and hasattr(wandb_module.run, 'url'):
+            logger.info(f"{tracker_name.capitalize()} run: {wandb_module.run.url}")
         else:
             logger.info(f"{tracker_name.capitalize()} run initialized: {self.run_name}")
 
@@ -132,8 +134,10 @@ class ExperimentTracker:
                     self.tb_writer.add_text("config", params_text)
                 elif tracker == "mlflow":
                     self.mlflow.log_params(params)
-                elif tracker in ("wandb", "trackio"):
+                elif tracker == "wandb":
                     self.wandb.config.update(params)
+                elif tracker == "trackio":
+                    self.trackio.config.update(params)
                 elif tracker == "aim":
                     for k, v in params.items():
                         self.aim_run.set(k, v, strict=False)
@@ -152,13 +156,47 @@ class ExperimentTracker:
                         self.tb_writer.add_scalar(k, v, step or 0)
                 elif tracker == "mlflow":
                     self.mlflow.log_metrics(metrics, step=step)
-                elif tracker in ("wandb", "trackio"):
+                elif tracker == "wandb":
                     self.wandb.log(metrics, step=step)
+                elif tracker == "trackio":
+                    self.trackio.log(metrics, step=step)
                 elif tracker == "aim":
                     for k, v in metrics.items():
                         self.aim_run.track(v, name=k, step=step)
             except Exception as e:
                 logger.warning(f"Failed to log metrics to {tracker}: {e}")
+
+    def log_summary(self, summary: Dict[str, Any]) -> None:
+        """Log final summary values (not time series charts).
+
+        These are single scalar values that should appear as text/summaries,
+        not as charts in the tracking dashboard.
+        """
+        if not self.trackers:
+            return
+
+        for tracker in self.trackers:
+            try:
+                if tracker == "tensorboard":
+                    # Log as text table, not scalars
+                    summary_text = "\n".join([f"{k}: {v}" for k, v in summary.items()])
+                    self.tb_writer.add_text("summary", summary_text)
+                elif tracker == "mlflow":
+                    # MLflow doesn't distinguish - log as metrics without step
+                    self.mlflow.log_metrics(summary)
+                elif tracker == "wandb":
+                    # Log as summary (not part of time series)
+                    for k, v in summary.items():
+                        self.wandb.run.summary[k] = v
+                elif tracker == "trackio":
+                    # Trackio doesn't have summary yet - log without step
+                    self.trackio.log(summary)
+                elif tracker == "aim":
+                    # Aim tracks everything as time series, but we can use context
+                    for k, v in summary.items():
+                        self.aim_run.set(('summary', k), v, strict=False)
+            except Exception as e:
+                logger.warning(f"Failed to log summary to {tracker}: {e}")
 
     def finish(self) -> None:
         """Finish all tracking runs."""
@@ -168,8 +206,10 @@ class ExperimentTracker:
                     self.tb_writer.close()
                 elif tracker == "mlflow":
                     self.mlflow.end_run()
-                elif tracker in ("wandb", "trackio"):
+                elif tracker == "wandb":
                     self.wandb.finish()
+                elif tracker == "trackio":
+                    self.trackio.finish()
                 elif tracker == "aim":
                     self.aim_run.close()
             except Exception as e:
