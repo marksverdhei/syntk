@@ -10,9 +10,12 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv python install
+      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync
       - run: uv run pytest -vv
