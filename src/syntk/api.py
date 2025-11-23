@@ -6,12 +6,13 @@ Provides functions for interacting with OpenAI-compatible APIs.
 import logging
 
 from openai import OpenAI
+from syntk.arguments import APIArguments, GenerationArguments
 
 logger = logging.getLogger(__name__)
 
 
 def get_chat_response(
-    client: OpenAI, prompt: str, api_args, gen_args
+    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments
 ) -> str:
     """Get response from OpenAI-compatible API.
     
