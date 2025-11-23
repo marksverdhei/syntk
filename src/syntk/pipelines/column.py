@@ -132,19 +132,27 @@ class DataArguments:
     """Arguments for data input/output."""
 
     input_file: str = field(
-        default="hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parquet",
-        metadata={"help": "Input parquet file path"},
+        default="input.parquet",
+        metadata={"help": "Input file path (supports .parquet, .csv, .json, .jsonl, .tsv)"},
     )
     output_file: str = field(
-        default="annotated_difficulty.parquet",
-        metadata={"help": "Output parquet file path"},
+        default="output.parquet",
+        metadata={"help": "Output file path (supports .parquet, .csv, .json, .jsonl, .tsv)"},
     )
     text_column: str = field(
-        default="review", metadata={"help": "Name of the text column in the dataset"}
+        default="text", metadata={"help": "Name of the text column in the dataset"}
     )
     output_column: str = field(
-        default="difficulty_annotation",
+        default="generated",
         metadata={"help": "Name of the generated output column"},
+    )
+    reasoning_content_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional column name to save reasoning traces (for reasoning models)"},
+    )
+    save_stop_reason: bool = field(
+        default=False,
+        metadata={"help": "Save stop/finish reason to a column named 'stop_reason'"},
     )
     limit: Optional[float] = field(
         default=None,
@@ -159,13 +167,8 @@ class ProcessingArguments:
     """Arguments for processing configuration."""
 
     prompt_template: str = field(
-        default="""Analyze the difficulty of classifying the sentiment of the following Norwegian text:
-
-Text: {text}
-True sentiment: {sentiment}
-
-Rate the difficulty on a scale of 1-5 and provide a brief explanation.""",
-        metadata={"help": "Prompt template with {text} and {sentiment} placeholders"},
+        default="Process the following text:\n\n{text}",
+        metadata={"help": "Prompt template with placeholders for column names (e.g., {text}, {label})"},
     )
     save_interval: int = field(
         default=100,
@@ -206,17 +209,31 @@ def get_chat_response(
 
     response = client.chat.completions.create(**kwargs)
 
-    response_text = response.choices[0].message.content
+    message = response.choices[0].message
+    content = message.content
+    reasoning_content = getattr(message, 'reasoning_content', None)
+    stop_reason = response.choices[0].finish_reason
+
+    # Log warning if content is None
+    if content is None:
+        logger.warning(
+            f"API response returned None content. Stop reason: {stop_reason}"
+        )
+
     logger.debug(
-        f"API Response: {response_text[:200]}..."
-        if len(response_text) > 200
-        else f"API Response: {response_text}"
+        f"API Response: {content[:200]}..."
+        if content and len(content) > 200
+        else f"API Response: {content}"
     )
     logger.debug(
         f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}"
     )
 
-    return response_text
+    return {
+        "content": content,
+        "reasoning_content": reasoning_content,
+        "stop_reason": stop_reason,
+    }
 
 
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
@@ -243,6 +260,17 @@ def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
         )
 
 
+def find_available_column_name(df: pd.DataFrame, base_name: str) -> str:
+    """Find an available column name by appending numbers if necessary."""
+    if base_name not in df.columns:
+        return base_name
+
+    counter = 1
+    while f"{base_name}_{counter}" in df.columns:
+        counter += 1
+    return f"{base_name}_{counter}"
+
+
 def load_dataframe(input_file: str) -> pd.DataFrame:
     """Load dataframe from file, detecting format from extension."""
     input_file_lower = input_file.lower()
@@ -260,7 +288,7 @@ def load_dataframe(input_file: str) -> pd.DataFrame:
         )
 
 
-def annotate_difficulty(
+def process_row(
     row,
     client: OpenAI,
     api_args: APIArguments,
@@ -268,8 +296,12 @@ def annotate_difficulty(
     data_args: DataArguments,
     proc_args: ProcessingArguments,
     responses: dict,
-) -> str:
-    """Annotate a single row with difficulty rating."""
+) -> dict:
+    """Process a single row by generating text based on the prompt template.
+
+    Returns:
+        dict with keys: content, reasoning_content, stop_reason
+    """
     # Create a dictionary of all column values for formatting
     # This allows any column to be referenced in the prompt template
     format_dict = row.to_dict()
@@ -289,7 +321,7 @@ def annotate_difficulty(
 
 
 def main() -> None:
-    """Main function to annotate difficulty ratings."""
+    """Main function to process dataset rows with LLM-generated content."""
     import sys
     import yaml
 
@@ -447,6 +479,19 @@ def main() -> None:
     if not resuming or data_args.output_column not in df.columns:
         df[data_args.output_column] = pd.NA
 
+    # Initialize optional columns for reasoning content and stop reason
+    actual_stop_reason_column = None
+    if data_args.save_stop_reason:
+        actual_stop_reason_column = find_available_column_name(df, "stop_reason")
+        if not resuming or actual_stop_reason_column not in df.columns:
+            df[actual_stop_reason_column] = pd.NA
+        logger.info(f"Stop reasons will be saved to column: {actual_stop_reason_column}")
+
+    if data_args.reasoning_content_column:
+        if not resuming or data_args.reasoning_content_column not in df.columns:
+            df[data_args.reasoning_content_column] = pd.NA
+        logger.info(f"Reasoning content will be saved to column: {data_args.reasoning_content_column}")
+
     # Identify rows to process (those with missing values in output column)
     rows_to_process = df[df[data_args.output_column].isna()].index.tolist()
 
@@ -465,10 +510,21 @@ def main() -> None:
 
     for idx in tqdm(rows_to_process, desc="Generating"):
         row = df.loc[idx]
-        result = annotate_difficulty(
-            row, client, api_args, gen_args, data_args, proc_args
+        result = process_row(
+            row, client, api_args, gen_args, data_args, proc_args, responses
         )
-        df.at[idx, data_args.output_column] = result
+
+        # Save content to output column
+        df.at[idx, data_args.output_column] = result["content"]
+
+        # Save reasoning content if column is specified
+        if data_args.reasoning_content_column:
+            df.at[idx, data_args.reasoning_content_column] = result["reasoning_content"]
+
+        # Save stop reason if enabled
+        if actual_stop_reason_column:
+            df.at[idx, actual_stop_reason_column] = result["stop_reason"]
+
         processed_count += 1
 
         # Log metrics periodically
@@ -514,9 +570,9 @@ def main() -> None:
     )
 
     # Final save
-    logger.info(f"Saving final annotated data to {data_args.output_file}")
+    logger.info(f"Saving final processed data to {data_args.output_file}")
     save_dataframe(df, data_args.output_file)
-    logger.info(f"Successfully saved {len(df)} annotated samples")
+    logger.info(f"Successfully saved {len(df)} processed samples")
     logger.info(f"Total unique API calls made: {len(responses)} (rest were cached)")
 
     # Finish tracking

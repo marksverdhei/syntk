@@ -2,9 +2,11 @@
 # This demonstrates how to use TensorBoard, MLflow, W&B, or Aim to track metrics
 
 # API Configuration
-base_url: "https://openrouter.ai/api/v1"
+# api_key_env: "OPENROUTER_API_KEY"
+# model: "meta-llama/llama-3.1-8b-instruct:free"
+base_url: "http://localhost:8000/v1"
 api_key_env: "OPENROUTER_API_KEY"
-model: "meta-llama/llama-3.1-8b-instruct:free"
+model: "GPTOSS-20B"
 
 # Generation Parameters
 temperature: 0.7
@@ -15,10 +17,12 @@ input_file: "hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parqu
 output_file: "annotated_difficulty.parquet"
 text_column: "review"
 output_column: "difficulty_annotation"
-limit: 100  # Process only 100 samples for this example
+reasoning_content_column: "reasoning_trace"  # Save reasoning traces
+save_stop_reason: true  # Save stop reasons
+limit: 10  # Process only 100 samples for this example
 
 # Processing Configuration
-save_interval: 50
+save_interval: 10
 prompt_template: |
   Analyze the difficulty of classifying the sentiment of the following Norwegian text:
 
@@ -27,8 +31,6 @@ prompt_template: |
 
   Rate the difficulty on a scale of 1-5 and provide a brief explanation.
 
-# Experiment Tracking (choose one or more, comma-separated)
-# Options: tensorboard, mlflow, wandb, aim
-report_to: "tensorboard"  # Change to "wandb,mlflow" to use multiple trackers
+# report_to: "tensorboard"  # Change to "wandb,mlflow" to use multiple trackers
 run_name: "difficulty_annotation_experiment"
 logging_dir: "./logs"  # Directory for TensorBoard/Aim logs, or MLflow tracking URI
