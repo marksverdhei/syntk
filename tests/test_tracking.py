@@ -1,4 +1,5 @@
 """Tests for experiment tracking functionality."""
+
 import pytest
 from unittest.mock import Mock, patch
 from syntk.tracking import (
@@ -23,7 +24,7 @@ class TestTrackingArguments:
         args = TrackingArguments(
             report_to="tensorboard,wandb",
             run_name="test_run",
-            logging_dir="/custom/logs"
+            logging_dir="/custom/logs",
         )
         assert args.report_to == "tensorboard,wandb"
         assert args.run_name == "test_run"
@@ -120,6 +121,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_log_params_dispatches_correctly(self):
         """Test that log_params calls correct methods and passes correct data."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
@@ -139,6 +141,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_log_metrics_dispatches_correctly(self):
         """Test that log_metrics calls correct methods for each metric."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
@@ -157,6 +160,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_finish_calls_cleanup(self):
         """Test that finish calls cleanup methods on all trackers."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
@@ -169,6 +173,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_log_params_handles_exceptions(self, caplog):
         """Test that log_params handles exceptions gracefully."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.tb_writer.add_text.side_effect = Exception("Test error")
@@ -182,6 +187,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_log_metrics_handles_exceptions(self, caplog):
         """Test that log_metrics handles exceptions gracefully."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.tb_writer.add_scalar.side_effect = Exception("Test error")
@@ -195,6 +201,7 @@ class TestExperimentTrackerWithMocks:
 
     def test_finish_handles_exceptions(self, caplog):
         """Test that finish handles exceptions gracefully."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.tb_writer.close.side_effect = Exception("Test error")
@@ -212,6 +219,7 @@ class TestExperimentTrackerContextManager:
 
     def test_context_manager_calls_finish(self):
         """Test that context manager calls finish on exit."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
@@ -226,6 +234,7 @@ class TestExperimentTrackerContextManager:
 
     def test_context_manager_calls_finish_on_exception(self):
         """Test that context manager calls finish even on exception."""
+
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
@@ -261,21 +270,20 @@ class TestGetTracker:
 
     def test_get_tracker_with_multiple_trackers(self):
         """Test get_tracker with comma-separated trackers."""
-        args = TrackingArguments(
-            report_to="tensorboard, wandb",
-            run_name="test"
-        )
+        args = TrackingArguments(report_to="tensorboard, wandb", run_name="test")
 
         def mock_init_tb(self):
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
 
-        def mock_init_wandb(self):
-            self.wandb = Mock()
-            self.trackers.append("wandb")
+        def mock_init_wandb(self, use_trackio=False):
+            setattr(self, "trackio" if use_trackio else "wandb", Mock())
+            self.trackers.append("trackio" if use_trackio else "wandb")
 
-        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb), \
-             patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb):
+        with (
+            patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb),
+            patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb),
+        ):
             tracker = get_tracker(args)
             assert len(tracker.trackers) == 2
 
@@ -287,21 +295,20 @@ class TestGetTracker:
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
 
-        def mock_init_wandb(self):
-            self.wandb = Mock()
-            self.trackers.append("wandb")
+        def mock_init_wandb(self, use_trackio=False):
+            setattr(self, "trackio" if use_trackio else "wandb", Mock())
+            self.trackers.append("trackio" if use_trackio else "wandb")
 
-        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb), \
-             patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb):
+        with (
+            patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb),
+            patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb),
+        ):
             tracker = get_tracker(args)
             assert len(tracker.trackers) == 2
 
     def test_get_tracker_with_custom_logging_dir(self):
         """Test get_tracker with custom logging_dir."""
-        args = TrackingArguments(
-            report_to="tensorboard",
-            logging_dir="/custom/path"
-        )
+        args = TrackingArguments(report_to="tensorboard", logging_dir="/custom/path")
 
         with patch("syntk.tracking.ExperimentTracker._init_tensorboard"):
             tracker = get_tracker(args)
@@ -315,12 +322,14 @@ class TestGetTracker:
             self.tb_writer = Mock()
             self.trackers.append("tensorboard")
 
-        def mock_init_wandb(self):
-            self.wandb = Mock()
-            self.trackers.append("wandb")
+        def mock_init_wandb(self, use_trackio=False):
+            setattr(self, "trackio" if use_trackio else "wandb", Mock())
+            self.trackers.append("trackio" if use_trackio else "wandb")
 
-        with patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb), \
-             patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb):
+        with (
+            patch("syntk.tracking.ExperimentTracker._init_tensorboard", mock_init_tb),
+            patch("syntk.tracking.ExperimentTracker._init_wandb", mock_init_wandb),
+        ):
             tracker = get_tracker(args)
             # Should only have 2 trackers, not 4
             assert len(tracker.trackers) == 2

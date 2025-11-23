@@ -133,11 +133,15 @@ class DataArguments:
 
     input_file: str = field(
         default="input.parquet",
-        metadata={"help": "Input file path (supports .parquet, .csv, .json, .jsonl, .tsv)"},
+        metadata={
+            "help": "Input file path (supports .parquet, .csv, .json, .jsonl, .tsv)"
+        },
     )
     output_file: str = field(
         default="output.parquet",
-        metadata={"help": "Output file path (supports .parquet, .csv, .json, .jsonl, .tsv)"},
+        metadata={
+            "help": "Output file path (supports .parquet, .csv, .json, .jsonl, .tsv)"
+        },
     )
     text_column: str = field(
         default="text", metadata={"help": "Name of the text column in the dataset"}
@@ -148,7 +152,9 @@ class DataArguments:
     )
     reasoning_content_column: Optional[str] = field(
         default=None,
-        metadata={"help": "Optional column name to save reasoning traces (for reasoning models)"},
+        metadata={
+            "help": "Optional column name to save reasoning traces (for reasoning models)"
+        },
     )
     save_stop_reason: bool = field(
         default=False,
@@ -156,7 +162,9 @@ class DataArguments:
     )
     raw_api_json_path: Optional[str] = field(
         default=None,
-        metadata={"help": "Path to save raw API requests/responses as JSONL (one JSON per line)"},
+        metadata={
+            "help": "Path to save raw API requests/responses as JSONL (one JSON per line)"
+        },
     )
     limit: Optional[float] = field(
         default=None,
@@ -172,7 +180,9 @@ class ProcessingArguments:
 
     prompt_template: str = field(
         default="Process the following text:\n\n{text}",
-        metadata={"help": "Prompt template with placeholders for column names (e.g., {text}, {label})"},
+        metadata={
+            "help": "Prompt template with placeholders for column names (e.g., {text}, {label})"
+        },
     )
     log_interval: int = field(
         default=10,
@@ -185,7 +195,11 @@ class ProcessingArguments:
 
 
 def get_chat_response(
-    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments, return_raw: bool = False
+    client: OpenAI,
+    prompt: str,
+    api_args: APIArguments,
+    gen_args: GenerationArguments,
+    return_raw: bool = False,
 ) -> dict:
     """Get response from OpenAI-compatible API."""
     logger.debug(f"API Call - Model: {api_args.model}")
@@ -219,7 +233,7 @@ def get_chat_response(
 
     message = response.choices[0].message
     content = message.content
-    reasoning_content = getattr(message, 'reasoning_content', None)
+    reasoning_content = getattr(message, "reasoning_content", None)
     stop_reason = response.choices[0].finish_reason
 
     # Log warning if content is None
@@ -247,7 +261,9 @@ def get_chat_response(
     if return_raw:
         result["raw"] = {
             "request": kwargs,
-            "response": response.model_dump() if hasattr(response, 'model_dump') else response.dict(),
+            "response": response.model_dump()
+            if hasattr(response, "model_dump")
+            else response.dict(),
         }
 
     return result
@@ -359,7 +375,9 @@ def process_row(
 
     logger.debug("Making new API call (cache miss)")
     return_raw = data_args.raw_api_json_path is not None
-    response = get_chat_response(client, prompt, api_args, gen_args, return_raw=return_raw)
+    response = get_chat_response(
+        client, prompt, api_args, gen_args, return_raw=return_raw
+    )
     responses[prompt] = response
     return response
 
@@ -409,11 +427,21 @@ def main() -> None:
 
         # Parse from flattened YAML dict
         yaml_parser = HfArgumentParser(
-            (APIArguments, GenerationArguments, DataArguments, ProcessingArguments, TrackingArguments)
+            (
+                APIArguments,
+                GenerationArguments,
+                DataArguments,
+                ProcessingArguments,
+                TrackingArguments,
+            )
         )
-        api_args_yaml, gen_args_yaml, data_args_yaml, proc_args_yaml, track_args_yaml = (
-            yaml_parser.parse_dict(config_dict, allow_extra_keys=True)
-        )
+        (
+            api_args_yaml,
+            gen_args_yaml,
+            data_args_yaml,
+            proc_args_yaml,
+            track_args_yaml,
+        ) = yaml_parser.parse_dict(config_dict, allow_extra_keys=True)
 
         # For each argument, use CLI value if it differs from default, otherwise use YAML value
         for args_obj, yaml_obj in [
@@ -530,12 +558,16 @@ def main() -> None:
         actual_stop_reason_column = find_available_column_name(df, "stop_reason")
         if not resuming or actual_stop_reason_column not in df.columns:
             df[actual_stop_reason_column] = pd.NA
-        logger.info(f"Stop reasons will be saved to column: {actual_stop_reason_column}")
+        logger.info(
+            f"Stop reasons will be saved to column: {actual_stop_reason_column}"
+        )
 
     if data_args.reasoning_content_column:
         if not resuming or data_args.reasoning_content_column not in df.columns:
             df[data_args.reasoning_content_column] = pd.NA
-        logger.info(f"Reasoning content will be saved to column: {data_args.reasoning_content_column}")
+        logger.info(
+            f"Reasoning content will be saved to column: {data_args.reasoning_content_column}"
+        )
 
     # Identify rows to process (those with missing values in output column)
     rows_to_process = df[df[data_args.output_column].isna()].index.tolist()
@@ -593,9 +625,12 @@ def main() -> None:
                     "rows_processed": processed_count,
                     "total_api_calls": len(responses),
                     "new_api_calls": len(responses) - initial_api_calls,
-                    "cache_hits": processed_count - (len(responses) - initial_api_calls),
+                    "cache_hits": processed_count
+                    - (len(responses) - initial_api_calls),
                     "elapsed_seconds": elapsed_time,
-                    "rows_per_second": processed_count / elapsed_time if elapsed_time > 0 else 0,
+                    "rows_per_second": processed_count / elapsed_time
+                    if elapsed_time > 0
+                    else 0,
                 },
                 step=processed_count,
             )
@@ -613,7 +648,11 @@ def main() -> None:
     # Calculate final metrics
     total_time = time.time() - start_time
     total_api_calls = len(responses) - initial_api_calls
-    cache_hit_rate = (processed_count - total_api_calls) / processed_count if processed_count > 0 else 0
+    cache_hit_rate = (
+        (processed_count - total_api_calls) / processed_count
+        if processed_count > 0
+        else 0
+    )
 
     # Log final summary (single scalars, not time series)
     tracker.log_summary(
@@ -623,7 +662,9 @@ def main() -> None:
             "total_cache_hits": processed_count - total_api_calls,
             "cache_hit_rate": cache_hit_rate,
             "total_time_seconds": total_time,
-            "avg_time_per_row": total_time / processed_count if processed_count > 0 else 0,
+            "avg_time_per_row": total_time / processed_count
+            if processed_count > 0
+            else 0,
         }
     )
 

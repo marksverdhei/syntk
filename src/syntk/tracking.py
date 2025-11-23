@@ -29,7 +29,9 @@ class TrackingArguments:
     )
     logging_dir: Optional[str] = field(
         default="./logs",
-        metadata={"help": "Directory for logs (tensorboard, aim) or MLflow tracking URI"},
+        metadata={
+            "help": "Directory for logs (tensorboard, aim) or MLflow tracking URI"
+        },
     )
 
 
@@ -39,7 +41,12 @@ class ExperimentTracker:
     Inspired by HuggingFace's approach - one simple interface for all trackers.
     """
 
-    def __init__(self, report_to: Optional[List[str]] = None, run_name: Optional[str] = None, logging_dir: str = "./logs"):
+    def __init__(
+        self,
+        report_to: Optional[List[str]] = None,
+        run_name: Optional[str] = None,
+        logging_dir: str = "./logs",
+    ):
         """Initialize trackers based on report_to list."""
         self.trackers = []
         self.run_name = run_name or "syntk_run"
@@ -97,10 +104,12 @@ class ExperimentTracker:
         """Initialize W&B or Trackio tracker (trackio is wandb API-compatible)."""
         if use_trackio:
             import trackio as wandb_module
+
             tracker_name = "trackio"
             attr_name = "trackio"
         else:
             import wandb as wandb_module
+
             tracker_name = "wandb"
             attr_name = "wandb"
 
@@ -109,7 +118,7 @@ class ExperimentTracker:
         self.trackers.append(tracker_name)
 
         # Get run info (trackio doesn't have .url attribute)
-        if wandb_module.run and hasattr(wandb_module.run, 'url'):
+        if wandb_module.run and hasattr(wandb_module.run, "url"):
             logger.info(f"{tracker_name.capitalize()} run: {wandb_module.run.url}")
         else:
             logger.info(f"{tracker_name.capitalize()} run initialized: {self.run_name}")
@@ -144,7 +153,9 @@ class ExperimentTracker:
             except Exception as e:
                 logger.warning(f"Failed to log params to {tracker}: {e}")
 
-    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log_metrics(
+        self, metrics: Dict[str, float], step: Optional[int] = None
+    ) -> None:
         """Log metrics to all active trackers."""
         if not self.trackers:
             return
@@ -194,7 +205,7 @@ class ExperimentTracker:
                 elif tracker == "aim":
                     # Aim tracks everything as time series, but we can use context
                     for k, v in summary.items():
-                        self.aim_run.set(('summary', k), v, strict=False)
+                        self.aim_run.set(("summary", k), v, strict=False)
             except Exception as e:
                 logger.warning(f"Failed to log summary to {tracker}: {e}")
 
