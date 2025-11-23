@@ -1,272 +1,35 @@
-import os
 import logging
+import os
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+
 import pandas as pd
 from openai import OpenAI
 from tqdm import tqdm
+
+from syntk.api import get_chat_response
+from syntk.argument_parser import HfArgumentParser
+from syntk.arguments import (
+    APIArguments,
+    ConfigArguments,
+    DataArguments,
+    GenerationArguments,
+    ProcessingArguments,
+)
+from syntk.data_io import load_dataframe, save_dataframe
 from syntk.tracking import TrackingArguments, get_tracker
-
-try:
-    from transformers import HfArgumentParser
-except ImportError:
-    # Fallback to argparse if transformers is not installed
-    from argparse import ArgumentParser
-    import dataclasses
-    from typing import get_origin, get_args
-
-    def _get_base_type(field_type):
-        """Extract base type from Optional or direct type."""
-        origin = get_origin(field_type)
-        if origin is not None:  # Union type (Optional is Union[T, None])
-            args = get_args(field_type)
-            # Get the non-None type from Optional
-            return next((arg for arg in args if arg is not type(None)), None)
-        return field_type
-
-    class HfArgumentParser:
-        """Minimal replacement for HfArgumentParser when transformers is not available."""
-
-        def __init__(self, dataclass_types):
-            self.dataclass_types = dataclass_types
-            self.parser = ArgumentParser()
-
-            for dataclass_type in dataclass_types:
-                for field in dataclasses.fields(dataclass_type):
-                    field_name = f"--{field.name}"
-                    field_metadata = field.metadata or {}
-                    help_text = field_metadata.get("help", "")
-
-                    kwargs = {"help": help_text}
-                    if field.default is not dataclasses.MISSING:
-                        kwargs["default"] = field.default
-                    elif field.default_factory is not dataclasses.MISSING:
-                        kwargs["default"] = field.default_factory()
-                    else:
-                        kwargs["required"] = True
-
-                    base_type = _get_base_type(field.type)
-                    if base_type is str:
-                        kwargs["type"] = str
-                    elif base_type is int:
-                        kwargs["type"] = int
-                    elif base_type is float:
-                        kwargs["type"] = float
-
-                    self.parser.add_argument(field_name, **kwargs)
-
-        def parse_args_into_dataclasses(self, args=None):
-            namespace = self.parser.parse_args(args)
-            result = []
-            for dataclass_type in self.dataclass_types:
-                field_names = {f.name for f in dataclasses.fields(dataclass_type)}
-                kwargs = {k: v for k, v in vars(namespace).items() if k in field_names}
-                result.append(dataclass_type(**kwargs))
-            return tuple(result)
-
-        def parse_dict(self, config_dict, allow_extra_keys=False):
-            result = []
-            for dataclass_type in self.dataclass_types:
-                field_names = {f.name for f in dataclasses.fields(dataclass_type)}
-                kwargs = {k: v for k, v in config_dict.items() if k in field_names}
-                result.append(dataclass_type(**kwargs))
-            return tuple(result)
-
 
 tqdm.pandas()
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ConfigArguments:
-    """Arguments for configuration file."""
-
-    config_file: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Path to YAML config file. If provided, loads defaults from file."
-        },
-    )
-
-
-@dataclass
-class APIArguments:
-    """Arguments for API configuration."""
-
-    base_url: str = field(
-        default="http://localhost:8000/v1",
-        metadata={"help": "Base URL for OpenAI-compatible API"},
-    )
-    api_key_env: str = field(
-        default="OPENAI_API_KEY",
-        metadata={"help": "Environment variable name for API key"},
-    )
-    model: str = field(default="gpt-3.5-turbo", metadata={"help": "Model name to use"})
-
-
-@dataclass
-class GenerationArguments:
-    """Arguments for text generation."""
-
-    temperature: Optional[float] = field(
-        default=None, metadata={"help": "Sampling temperature"}
-    )
-    max_tokens: Optional[int] = field(
-        default=None, metadata={"help": "Maximum tokens to generate"}
-    )
-    top_p: Optional[float] = field(
-        default=None, metadata={"help": "Nucleus sampling probability"}
-    )
-    frequency_penalty: Optional[float] = field(
-        default=None, metadata={"help": "Frequency penalty"}
-    )
-    presence_penalty: Optional[float] = field(
-        default=None, metadata={"help": "Presence penalty"}
-    )
-
-
-@dataclass
-class DataArguments:
-    """Arguments for data input/output."""
-
-    input_file: str = field(
-        default="hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parquet",
-        metadata={"help": "Input parquet file path"},
-    )
-    output_file: str = field(
-        default="annotated_difficulty.parquet",
-        metadata={"help": "Output parquet file path"},
-    )
-    text_column: str = field(
-        default="review", metadata={"help": "Name of the text column in the dataset"}
-    )
-    output_column: str = field(
-        default="difficulty_annotation",
-        metadata={"help": "Name of the generated output column"},
-    )
-    limit: Optional[float] = field(
-        default=None,
-        metadata={
-            "help": "Limit samples: integer for count, 0-1 for fraction, None for all"
-        },
-    )
-
-
-@dataclass
-class ProcessingArguments:
-    """Arguments for processing configuration."""
-
-    prompt_template: str = field(
-        default="""Analyze the difficulty of classifying the sentiment of the following Norwegian text:
-
-Text: {text}
-True sentiment: {sentiment}
-
-Rate the difficulty on a scale of 1-5 and provide a brief explanation.""",
-        metadata={"help": "Prompt template with {text} and {sentiment} placeholders"},
-    )
-    save_interval: int = field(
-        default=100,
-        metadata={"help": "Save progress every N rows (0 to only save at end)"},
-    )
-
-
-def get_chat_response(
-    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments
-) -> str:
-    """Get response from OpenAI-compatible API."""
-    logger.debug(f"API Call - Model: {api_args.model}")
-    logger.debug(
-        f"API Call - Temperature: {gen_args.temperature}, Max tokens: {gen_args.max_tokens}"
-    )
-    logger.debug(
-        f"API Call - Prompt: {prompt[:200]}..."
-        if len(prompt) > 200
-        else f"API Call - Prompt: {prompt}"
-    )
-
-    # Build kwargs dict, only including non-None values
-    kwargs = {
-        "model": api_args.model,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-
-    if gen_args.temperature is not None:
-        kwargs["temperature"] = gen_args.temperature
-    if gen_args.max_tokens is not None:
-        kwargs["max_tokens"] = gen_args.max_tokens
-    if gen_args.top_p is not None:
-        kwargs["top_p"] = gen_args.top_p
-    if gen_args.frequency_penalty is not None:
-        kwargs["frequency_penalty"] = gen_args.frequency_penalty
-    if gen_args.presence_penalty is not None:
-        kwargs["presence_penalty"] = gen_args.presence_penalty
-
-    response = client.chat.completions.create(**kwargs)
-
-    response_text = response.choices[0].message.content
-    logger.debug(
-        f"API Response: {response_text[:200]}..."
-        if len(response_text) > 200
-        else f"API Response: {response_text}"
-    )
-    logger.debug(
-        f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}"
-    )
-
-    return response_text
-
-
-def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
-    """Save dataframe to file, detecting format from extension."""
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    output_file_lower = output_file.lower()
-    if output_file_lower.endswith(".parquet"):
-        df.to_parquet(output_file, index=False)
-    elif output_file_lower.endswith(".csv"):
-        df.to_csv(output_file, index=False)
-    elif output_file_lower.endswith(".json"):
-        df.to_json(output_file, orient="records", lines=False)
-    elif output_file_lower.endswith(".jsonl"):
-        df.to_json(output_file, orient="records", lines=True)
-    elif output_file_lower.endswith(".tsv"):
-        df.to_csv(output_file, sep="\t", index=False)
-    else:
-        raise ValueError(
-            f"Unsupported output format: {output_file}. Supported formats: .parquet, .csv, .json, .jsonl, .tsv"
-        )
-
-
-def load_dataframe(input_file: str) -> pd.DataFrame:
-    """Load dataframe from file, detecting format from extension."""
-    input_file_lower = input_file.lower()
-    if input_file_lower.endswith(".parquet"):
-        return pd.read_parquet(input_file)
-    elif input_file_lower.endswith(".csv"):
-        return pd.read_csv(input_file)
-    elif input_file_lower.endswith(".json") or input_file_lower.endswith(".jsonl"):
-        return pd.read_json(input_file, lines=input_file_lower.endswith(".jsonl"))
-    elif input_file_lower.endswith(".tsv"):
-        return pd.read_csv(input_file, sep="\t")
-    else:
-        raise ValueError(
-            f"Unsupported file format: {input_file}. Supported formats: .parquet, .csv, .json, .jsonl, .tsv"
-        )
-
-
 def annotate_difficulty(
     row,
     client: OpenAI,
-    api_args: APIArguments,
-    gen_args: GenerationArguments,
-    data_args: DataArguments,
-    proc_args: ProcessingArguments,
+    api_args,
+    gen_args,
+    data_args,
+    proc_args,
     responses: dict,
 ) -> str:
     """Annotate a single row with difficulty rating."""
@@ -291,6 +54,7 @@ def annotate_difficulty(
 def main() -> None:
     """Main function to annotate difficulty ratings."""
     import sys
+
     import yaml
 
     # Initialize response cache (local to this run)
@@ -466,7 +230,7 @@ def main() -> None:
     for idx in tqdm(rows_to_process, desc="Generating"):
         row = df.loc[idx]
         result = annotate_difficulty(
-            row, client, api_args, gen_args, data_args, proc_args
+            row, client, api_args, gen_args, data_args, proc_args, responses
         )
         df.at[idx, data_args.output_column] = result
         processed_count += 1

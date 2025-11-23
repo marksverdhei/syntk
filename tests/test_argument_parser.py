@@ -7,7 +7,7 @@ from typing import Optional
 sys.modules['transformers'] = None
 
 # Now import after mocking
-from syntk.pipelines.column import HfArgumentParser, _get_base_type  # noqa: E402
+from syntk.argument_parser import HfArgumentParser, _get_base_type  # noqa: E402
 
 
 class TestGetBaseType:
