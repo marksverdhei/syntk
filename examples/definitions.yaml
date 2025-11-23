@@ -9,7 +9,6 @@ model: "GLM4.5-Air"
 input_file: "hf://datasets/marksverdhei/norwegian-wordnet-examples/sense_examples_table.tsv"
 output_file: "data/definitions_glm4.5-Air-q4_k_m.parquet"
 output_column: "definitions_4.5air" # Name of the generated output column
-limit: 3 # null for all, integer for count, float (0-1) for fraction
 
 # Processing options
 # Prompt template (can reference any column from the dataset)
