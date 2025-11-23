@@ -36,3 +36,5 @@ prompt_template: |
 report_to: "trackio,wandb"
 run_name: "difficulty_annotation_experiment"
 logging_dir: "./logs"  # Directory for TensorBoard/Aim logs, or MLflow tracking URI
+
+raw_api_json_path: "calls.jsonl"

@@ -154,6 +154,10 @@ class DataArguments:
         default=False,
         metadata={"help": "Save stop/finish reason to a column named 'stop_reason'"},
     )
+    raw_api_json_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to save raw API requests/responses as JSONL (one JSON per line)"},
+    )
     limit: Optional[float] = field(
         default=None,
         metadata={
@@ -181,8 +185,8 @@ class ProcessingArguments:
 
 
 def get_chat_response(
-    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments
-) -> str:
+    client: OpenAI, prompt: str, api_args: APIArguments, gen_args: GenerationArguments, return_raw: bool = False
+) -> dict:
     """Get response from OpenAI-compatible API."""
     logger.debug(f"API Call - Model: {api_args.model}")
     logger.debug(
@@ -233,11 +237,20 @@ def get_chat_response(
         f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}"
     )
 
-    return {
+    result = {
         "content": content,
         "reasoning_content": reasoning_content,
         "stop_reason": stop_reason,
     }
+
+    # Add raw request/response data if requested
+    if return_raw:
+        result["raw"] = {
+            "request": kwargs,
+            "response": response.model_dump() if hasattr(response, 'model_dump') else response.dict(),
+        }
+
+    return result
 
 
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
@@ -292,6 +305,32 @@ def load_dataframe(input_file: str) -> pd.DataFrame:
         )
 
 
+def save_raw_api_call(file_path: str, row_index: int, result: dict) -> None:
+    """Append raw API request/response to JSONL file.
+
+    Args:
+        file_path: Path to JSONL file
+        row_index: Index of the row being processed
+        result: Result dict containing raw API data
+    """
+    import json
+    import time
+
+    if "raw" not in result:
+        return
+
+    record = {
+        "timestamp": time.time(),
+        "row_index": row_index,
+        "request": result["raw"]["request"],
+        "response": result["raw"]["response"],
+    }
+
+    # Append to JSONL file (one JSON object per line)
+    with open(file_path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
 def process_row(
     row,
     client: OpenAI,
@@ -304,7 +343,7 @@ def process_row(
     """Process a single row by generating text based on the prompt template.
 
     Returns:
-        dict with keys: content, reasoning_content, stop_reason
+        dict with keys: content, reasoning_content, stop_reason, and optionally raw
     """
     # Create a dictionary of all column values for formatting
     # This allows any column to be referenced in the prompt template
@@ -319,7 +358,8 @@ def process_row(
         return responses[prompt]
 
     logger.debug("Making new API call (cache miss)")
-    response = get_chat_response(client, prompt, api_args, gen_args)
+    return_raw = data_args.raw_api_json_path is not None
+    response = get_chat_response(client, prompt, api_args, gen_args, return_raw=return_raw)
     responses[prompt] = response
     return response
 
@@ -504,6 +544,15 @@ def main() -> None:
         logger.info("All rows already processed. Nothing to do.")
         return
 
+    # Initialize raw API JSON file if specified (clear file if not resuming)
+    if data_args.raw_api_json_path and not resuming:
+        raw_dir = os.path.dirname(data_args.raw_api_json_path)
+        if raw_dir:
+            os.makedirs(raw_dir, exist_ok=True)
+        # Create empty file (or truncate if exists)
+        open(data_args.raw_api_json_path, "w").close()
+        logger.info(f"Raw API data will be saved to: {data_args.raw_api_json_path}")
+
     logger.info(f"Processing {len(rows_to_process)} rows...")
 
     # Track start time
@@ -529,6 +578,10 @@ def main() -> None:
         # Save stop reason if enabled
         if actual_stop_reason_column:
             df.at[idx, actual_stop_reason_column] = result["stop_reason"]
+
+        # Save raw API request/response if enabled
+        if data_args.raw_api_json_path:
+            save_raw_api_call(data_args.raw_api_json_path, idx, result)
 
         processed_count += 1
 
