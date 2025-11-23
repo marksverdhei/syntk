@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 def annotate_difficulty(
     row,
     client: OpenAI,
-    api_args,
-    gen_args,
-    data_args,
-    proc_args,
+    api_args: APIArguments,
+    gen_args: GenerationArguments,
+    data_args: DataArguments,
+    proc_args: ProcessingArguments,
     responses: dict,
 ) -> str:
     """Annotate a single row with difficulty rating."""
