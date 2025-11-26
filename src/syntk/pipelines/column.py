@@ -156,7 +156,13 @@ class ColumnPipeline(BasePipeline):
         format_dict = row.to_dict()
 
         # Format the prompt using all available columns
-        prompt = self.proc_args.prompt_template.format(**format_dict)
+        try:
+            prompt = self.proc_args.prompt_template.format(**format_dict)
+        except KeyError as e:
+            raise ValueError(
+                f"Prompt template references column {e} which does not exist in the data. "
+                f"Available columns: {list(format_dict.keys())}"
+            )
 
         # Use cache if available
         if prompt in self.responses:
