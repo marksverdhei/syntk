@@ -9,15 +9,13 @@ import pandas as pd
 import pytest
 from syntk.pipelines.column import (
     main,
-    get_chat_response,
-    process_row,
-    save_dataframe,
-    load_dataframe,
-    APIArguments,
-    GenerationArguments,
-    DataArguments,
-    ProcessingArguments,
+    ColumnPipeline,
+    ColumnDataArguments as DataArguments,
+    ColumnProcessingArguments as ProcessingArguments,
 )
+from syntk.api_client import get_chat_response
+from syntk.io import save_dataframe, load_dataframe
+from syntk.config import APIArguments, GenerationArguments
 
 
 @pytest.fixture
@@ -180,15 +178,12 @@ class TestGetChatResponse:
 
     def test_basic_chat_response(self, mock_openai_client):
         """Test basic chat response with mocked OpenAI client."""
-        api_args = APIArguments(
-            base_url="http://localhost:8000/v1",
-            api_key_env="OPENAI_API_KEY",
-            model="gpt-3.5-turbo",
-        )
-        gen_args = GenerationArguments(temperature=0.7, max_tokens=100)
-
         result = get_chat_response(
-            mock_openai_client, "What is 2+2?", api_args, gen_args
+            client=mock_openai_client,
+            prompt="What is 2+2?",
+            model="gpt-3.5-turbo",
+            temperature=0.7,
+            max_tokens=100,
         )
 
         assert result["content"] is not None
@@ -198,16 +193,16 @@ class TestGetChatResponse:
 
     def test_chat_response_with_generation_params(self, mock_openai_client):
         """Test that generation parameters are passed correctly."""
-        api_args = APIArguments(model="gpt-3.5-turbo")
-        gen_args = GenerationArguments(
+        get_chat_response(
+            client=mock_openai_client,
+            prompt="Test prompt",
+            model="gpt-3.5-turbo",
             temperature=0.8,
             max_tokens=200,
             top_p=0.9,
             frequency_penalty=0.5,
             presence_penalty=0.3,
         )
-
-        get_chat_response(mock_openai_client, "Test prompt", api_args, gen_args)
 
         call_kwargs = mock_openai_client.chat.completions.create.call_args[1]
         assert call_kwargs["temperature"] == 0.8
@@ -218,11 +213,11 @@ class TestGetChatResponse:
 
     def test_chat_response_with_raw_data(self, mock_openai_client):
         """Test that raw request/response data is returned when requested."""
-        api_args = APIArguments(model="gpt-3.5-turbo")
-        gen_args = GenerationArguments()
-
         result = get_chat_response(
-            mock_openai_client, "Test prompt", api_args, gen_args, return_raw=True
+            client=mock_openai_client,
+            prompt="Test prompt",
+            model="gpt-3.5-turbo",
+            return_raw=True,
         )
 
         assert "raw" in result
@@ -234,11 +229,10 @@ class TestGetChatResponse:
         self, mock_openai_client_with_reasoning
     ):
         """Test chat response with reasoning content from reasoning models."""
-        api_args = APIArguments(model="o1-mini")
-        gen_args = GenerationArguments()
-
         result = get_chat_response(
-            mock_openai_client_with_reasoning, "What is the answer?", api_args, gen_args
+            client=mock_openai_client_with_reasoning,
+            prompt="What is the answer?",
+            model="o1-mini",
         )
 
         assert result["content"] == "42"
@@ -247,73 +241,55 @@ class TestGetChatResponse:
 
 
 class TestProcessRow:
-    """Tests for process_row function."""
+    """Tests for process_row method."""
 
     def test_process_row_basic(self, mock_openai_client):
         """Test processing a single row with mocked API."""
         row = pd.Series({"text": "Hello world", "id": 1})
-        api_args = APIArguments(model="gpt-3.5-turbo")
-        gen_args = GenerationArguments()
-        data_args = DataArguments(text_column="text")
-        proc_args = ProcessingArguments(prompt_template="Process: {text}")
-        responses = {}
 
-        result = process_row(
-            row,
-            mock_openai_client,
-            api_args,
-            gen_args,
-            data_args,
-            proc_args,
-            responses,
-        )
+        # Create a pipeline instance with minimal setup
+        pipeline = ColumnPipeline()
+        pipeline.client = mock_openai_client
+        pipeline.api_args = APIArguments(model="gpt-3.5-turbo")
+        pipeline.gen_args = GenerationArguments()
+        pipeline.data_args = DataArguments(text_column="text", output_column="generated")
+        pipeline.proc_args = ProcessingArguments(prompt_template="Process: {text}")
 
-        assert result["content"] is not None
-        assert len(responses) == 1
+        result = pipeline.process_row(row, 0)
+
+        assert result["generated"] is not None
+        assert len(pipeline.responses) == 1
 
     def test_process_row_caching(self, mock_openai_client):
         """Test that identical prompts use cached responses."""
         row = pd.Series({"text": "Same prompt", "id": 1})
-        api_args = APIArguments(model="gpt-3.5-turbo")
-        gen_args = GenerationArguments()
-        data_args = DataArguments(text_column="text")
-        proc_args = ProcessingArguments(prompt_template="{text}")
-        responses = {}
+
+        # Create a pipeline instance with minimal setup
+        pipeline = ColumnPipeline()
+        pipeline.client = mock_openai_client
+        pipeline.api_args = APIArguments(model="gpt-3.5-turbo")
+        pipeline.gen_args = GenerationArguments()
+        pipeline.data_args = DataArguments(text_column="text", output_column="generated")
+        pipeline.proc_args = ProcessingArguments(prompt_template="{text}")
 
         # First call
-        result1 = process_row(
-            row,
-            mock_openai_client,
-            api_args,
-            gen_args,
-            data_args,
-            proc_args,
-            responses,
-        )
+        result1 = pipeline.process_row(row, 0)
 
         # Second call with same prompt
-        result2 = process_row(
-            row,
-            mock_openai_client,
-            api_args,
-            gen_args,
-            data_args,
-            proc_args,
-            responses,
-        )
+        result2 = pipeline.process_row(row, 0)
 
         assert result1 == result2
         # Should only call API once due to caching
         assert mock_openai_client.chat.completions.create.call_count == 1
-        assert len(responses) == 1
+        assert len(pipeline.responses) == 1
 
 
 class TestEndToEndPipeline:
     """End-to-end tests for the complete pipeline with file I/O."""
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_complete_pipeline_with_file_writing(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -357,9 +333,9 @@ class TestEndToEndPipeline:
         # Verify API was called correct number of times
         assert mock_openai_client.chat.completions.create.call_count == 3
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_reasoning_content(
         self, mock_tracker, mock_openai_class, temp_dir, mock_openai_client_with_reasoning
     ):
@@ -399,9 +375,9 @@ class TestEndToEndPipeline:
         assert output_df["reasoning"].notna().all()
         assert "step by step" in output_df["reasoning"].iloc[0]
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_stop_reason(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -431,9 +407,9 @@ class TestEndToEndPipeline:
         assert "stop_reason" in output_df.columns
         assert (output_df["stop_reason"] == "stop").all()
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_raw_api_json(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -479,9 +455,9 @@ class TestEndToEndPipeline:
             assert record["request"]["model"] == "gpt-3.5-turbo"
             assert "messages" in record["request"]
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_multiple_file_formats(
         self, mock_tracker, mock_openai_class, temp_dir
     ):
@@ -562,9 +538,9 @@ class TestEndToEndPipeline:
             assert len(output_df) == 1, f"Wrong row count for {fmt}"
             assert "generated" in output_df.columns, f"Missing generated column for {fmt}"
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_resume_functionality(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -603,9 +579,9 @@ class TestEndToEndPipeline:
         assert output_df.at[0, "generated"] == "Already processed"
         assert output_df["generated"].notna().all()
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_limit(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
