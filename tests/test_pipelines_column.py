@@ -5,7 +5,7 @@ import tempfile
 import shutil
 import pandas as pd
 import pytest
-from syntk.pipelines.column import save_dataframe, load_dataframe
+from syntk.io import save_dataframe, load_dataframe
 
 
 @pytest.fixture

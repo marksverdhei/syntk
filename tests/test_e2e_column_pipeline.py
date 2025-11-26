@@ -9,15 +9,12 @@ import pandas as pd
 import pytest
 from syntk.pipelines.column import (
     main,
-    get_chat_response,
-    process_row,
-    save_dataframe,
-    load_dataframe,
-    APIArguments,
-    GenerationArguments,
-    DataArguments,
-    ProcessingArguments,
+    ColumnDataArguments as DataArguments,
+    ColumnProcessingArguments as ProcessingArguments,
 )
+from syntk.api_client import get_chat_response
+from syntk.io import save_dataframe, load_dataframe
+from syntk.config import APIArguments, GenerationArguments
 
 
 @pytest.fixture
@@ -311,9 +308,9 @@ class TestProcessRow:
 class TestEndToEndPipeline:
     """End-to-end tests for the complete pipeline with file I/O."""
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_complete_pipeline_with_file_writing(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -357,9 +354,9 @@ class TestEndToEndPipeline:
         # Verify API was called correct number of times
         assert mock_openai_client.chat.completions.create.call_count == 3
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_reasoning_content(
         self, mock_tracker, mock_openai_class, temp_dir, mock_openai_client_with_reasoning
     ):
@@ -399,9 +396,9 @@ class TestEndToEndPipeline:
         assert output_df["reasoning"].notna().all()
         assert "step by step" in output_df["reasoning"].iloc[0]
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_stop_reason(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -431,9 +428,9 @@ class TestEndToEndPipeline:
         assert "stop_reason" in output_df.columns
         assert (output_df["stop_reason"] == "stop").all()
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_raw_api_json(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -479,9 +476,9 @@ class TestEndToEndPipeline:
             assert record["request"]["model"] == "gpt-3.5-turbo"
             assert "messages" in record["request"]
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_multiple_file_formats(
         self, mock_tracker, mock_openai_class, temp_dir
     ):
@@ -562,9 +559,9 @@ class TestEndToEndPipeline:
             assert len(output_df) == 1, f"Wrong row count for {fmt}"
             assert "generated" in output_df.columns, f"Missing generated column for {fmt}"
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_resume_functionality(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
@@ -603,9 +600,9 @@ class TestEndToEndPipeline:
         assert output_df.at[0, "generated"] == "Already processed"
         assert output_df["generated"].notna().all()
 
-    @patch("syntk.pipelines.column.OpenAI")
+    @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
-    @patch("syntk.pipelines.column.get_tracker")
+    @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_limit(
         self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
     ):
