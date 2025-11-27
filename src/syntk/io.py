@@ -59,7 +59,7 @@ def _ensure_hf_repo_exists(output_file: str) -> None:
             )
             logger.info(f"Ensured Hugging Face repository exists: {repo_id}")
         except Exception as e:
-            # Log warning but don't fail - the repo might exist but we don't have access
+            # Log at debug level since the repo might exist but we don't have access to verify
             logger.debug(
                 f"Could not ensure repository exists (it may already exist): {e}"
             )
