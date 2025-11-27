@@ -189,8 +189,12 @@ class BasePipeline(ABC):
         """Initialize OpenAI client from API arguments."""
         api_key = os.getenv(self.api_args.api_key_env)
         if not api_key:
-            raise ValueError(
-                f"API key not found in environment variable: {self.api_args.api_key_env}"
+            # Use placeholder for local APIs that may not require authentication
+            api_key = "placeholder-api-key"
+            logger.warning(
+                f"API key not found in environment variable: {self.api_args.api_key_env}. "
+                f"Using placeholder key. This may work for local APIs but will fail for "
+                f"services that require authentication (e.g., OpenAI, OpenRouter)."
             )
 
         logger.info(
@@ -209,7 +213,9 @@ class BasePipeline(ABC):
 
         # Log all configuration parameters
         config_params = self.get_config_params()
-        self.tracker.log_params({k: v for k, v in config_params.items() if v is not None})
+        self.tracker.log_params(
+            {k: v for k, v in config_params.items() if v is not None}
+        )
 
     def load_data(self) -> Tuple[pd.DataFrame, bool]:
         """Load data with resume capability.
@@ -238,7 +244,9 @@ class BasePipeline(ABC):
                     )
                     resuming = True
                 else:
-                    logger.info("Output file exists but no rows processed. Loading input file.")
+                    logger.info(
+                        "Output file exists but no rows processed. Loading input file."
+                    )
                     df = load_dataframe(self.data_args.input_file)
             except Exception as e:
                 logger.warning(
@@ -265,7 +273,9 @@ class BasePipeline(ABC):
             if 0 < self.data_args.limit < 1:
                 # Treat as fraction
                 n_samples = int(len(df) * self.data_args.limit)
-                logger.info(f"Limiting to {self.data_args.limit * 100}% of samples: {n_samples}")
+                logger.info(
+                    f"Limiting to {self.data_args.limit * 100}% of samples: {n_samples}"
+                )
                 df = df.head(n_samples)
             elif self.data_args.limit >= 1:
                 # Treat as absolute count
@@ -336,11 +346,17 @@ class BasePipeline(ABC):
             processed_count += 1
 
             # Log metrics periodically
-            if self.proc_args.log_interval > 0 and processed_count % self.proc_args.log_interval == 0:
+            if (
+                self.proc_args.log_interval > 0
+                and processed_count % self.proc_args.log_interval == 0
+            ):
                 self._log_metrics(processed_count, initial_api_calls, start_time)
 
             # Save checkpoint
-            if self.proc_args.save_interval > 0 and processed_count % self.proc_args.save_interval == 0:
+            if (
+                self.proc_args.save_interval > 0
+                and processed_count % self.proc_args.save_interval == 0
+            ):
                 self._save_checkpoint(processed_count, len(rows_to_process))
 
         # Log final summary
@@ -349,7 +365,9 @@ class BasePipeline(ABC):
         # Final save
         self._save_final_output()
 
-    def _log_metrics(self, processed_count: int, initial_api_calls: int, start_time: float) -> None:
+    def _log_metrics(
+        self, processed_count: int, initial_api_calls: int, start_time: float
+    ) -> None:
         """Log periodic metrics to tracker."""
         elapsed_time = time.time() - start_time
         self.tracker.log_metrics(
@@ -357,9 +375,12 @@ class BasePipeline(ABC):
                 "rows_processed": processed_count,
                 "total_api_calls": len(self.responses),
                 "new_api_calls": len(self.responses) - initial_api_calls,
-                "cache_hits": processed_count - (len(self.responses) - initial_api_calls),
+                "cache_hits": processed_count
+                - (len(self.responses) - initial_api_calls),
                 "elapsed_seconds": elapsed_time,
-                "rows_per_second": processed_count / elapsed_time if elapsed_time > 0 else 0,
+                "rows_per_second": processed_count / elapsed_time
+                if elapsed_time > 0
+                else 0,
             },
             step=processed_count,
         )
@@ -371,7 +392,9 @@ class BasePipeline(ABC):
         )
         save_dataframe(self.df, self.data_args.output_file)
 
-    def _log_final_summary(self, processed_count: int, initial_api_calls: int, start_time: float) -> None:
+    def _log_final_summary(
+        self, processed_count: int, initial_api_calls: int, start_time: float
+    ) -> None:
         """Log final summary metrics."""
         total_time = time.time() - start_time
         total_api_calls = len(self.responses) - initial_api_calls
@@ -388,7 +411,9 @@ class BasePipeline(ABC):
                 "total_cache_hits": processed_count - total_api_calls,
                 "cache_hit_rate": cache_hit_rate,
                 "total_time_seconds": total_time,
-                "avg_time_per_row": total_time / processed_count if processed_count > 0 else 0,
+                "avg_time_per_row": total_time / processed_count
+                if processed_count > 0
+                else 0,
             }
         )
 
@@ -397,4 +422,6 @@ class BasePipeline(ABC):
         logger.info(f"Saving final processed data to {self.data_args.output_file}")
         save_dataframe(self.df, self.data_args.output_file)
         logger.info(f"Successfully saved {len(self.df)} processed samples")
-        logger.info(f"Total unique API calls made: {len(self.responses)} (rest were cached)")
+        logger.info(
+            f"Total unique API calls made: {len(self.responses)} (rest were cached)"
+        )

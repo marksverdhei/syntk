@@ -7,6 +7,7 @@ import shutil
 from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
+from openai import AuthenticationError
 from syntk.pipelines.column import (
     main,
     ColumnPipeline,
@@ -103,7 +104,9 @@ def mock_openai_client():
         create_mock_response(
             "Quantum computing uses quantum bits (qubits) that can exist in superposition."
         ),
-        create_mock_response("Code flows like streams,\nBugs hide in silent shadows,\nDebug brings the dawn."),
+        create_mock_response(
+            "Code flows like streams,\nBugs hide in silent shadows,\nDebug brings the dawn."
+        ),
     ]
 
     mock_client.chat.completions.create = Mock(side_effect=responses)
@@ -239,6 +242,29 @@ class TestGetChatResponse:
         assert result["reasoning_content"] is not None
         assert "step by step" in result["reasoning_content"]
 
+    def test_chat_response_authentication_error(self, caplog):
+        """Test that authentication errors are properly caught and reported."""
+        from openai import AuthenticationError as OpenAIAuthError
+
+        mock_client = Mock()
+        # Simulate an authentication error
+        mock_client.chat.completions.create = Mock(
+            side_effect=OpenAIAuthError(
+                "Invalid API key", response=Mock(status_code=401), body=None
+            )
+        )
+
+        with pytest.raises(AuthenticationError):
+            get_chat_response(
+                client=mock_client,
+                prompt="Test prompt",
+                model="gpt-3.5-turbo",
+            )
+
+        # Verify helpful error message was logged
+        assert "Authentication failed" in caplog.text
+        assert "API key is missing or invalid" in caplog.text
+
 
 class TestProcessRow:
     """Tests for process_row method."""
@@ -252,7 +278,9 @@ class TestProcessRow:
         pipeline.client = mock_openai_client
         pipeline.api_args = APIArguments(model="gpt-3.5-turbo")
         pipeline.gen_args = GenerationArguments()
-        pipeline.data_args = DataArguments(text_column="text", output_column="generated")
+        pipeline.data_args = DataArguments(
+            text_column="text", output_column="generated"
+        )
         pipeline.proc_args = ProcessingArguments(prompt_template="Process: {text}")
 
         result = pipeline.process_row(row, 0)
@@ -269,7 +297,9 @@ class TestProcessRow:
         pipeline.client = mock_openai_client
         pipeline.api_args = APIArguments(model="gpt-3.5-turbo")
         pipeline.gen_args = GenerationArguments()
-        pipeline.data_args = DataArguments(text_column="text", output_column="generated")
+        pipeline.data_args = DataArguments(
+            text_column="text", output_column="generated"
+        )
         pipeline.proc_args = ProcessingArguments(prompt_template="{text}")
 
         # First call
@@ -291,7 +321,12 @@ class TestEndToEndPipeline:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_complete_pipeline_with_file_writing(
-        self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
     ):
         """Test complete pipeline from input file to output file."""
         input_file, input_df = sample_input_data
@@ -337,7 +372,11 @@ class TestEndToEndPipeline:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_reasoning_content(
-        self, mock_tracker, mock_openai_class, temp_dir, mock_openai_client_with_reasoning
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        mock_openai_client_with_reasoning,
     ):
         """Test pipeline saves reasoning content when specified."""
         # Create input data
@@ -379,7 +418,12 @@ class TestEndToEndPipeline:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_stop_reason(
-        self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
     ):
         """Test pipeline saves stop reason when specified."""
         input_file, _ = sample_input_data
@@ -411,7 +455,12 @@ class TestEndToEndPipeline:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_raw_api_json(
-        self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
     ):
         """Test pipeline saves raw API requests/responses to JSONL."""
         input_file, input_df = sample_input_data
@@ -502,18 +551,29 @@ class TestEndToEndPipeline:
             mock_response = Mock()
             mock_response.choices = [mock_choice]
             mock_response.usage = mock_usage
-            mock_response.model_dump = Mock(return_value={
-                "id": "chatcmpl-123",
-                "object": "chat.completion",
-                "created": 1677652288,
-                "model": "gpt-3.5-turbo",
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": f"Processed: Test {fmt}"},
-                    "finish_reason": "stop"
-                }],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
-            })
+            mock_response.model_dump = Mock(
+                return_value={
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "model": "gpt-3.5-turbo",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": f"Processed: Test {fmt}",
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
+                    },
+                }
+            )
 
             mock_client.chat.completions.create = Mock(return_value=mock_response)
             mock_openai_class.return_value = mock_client
@@ -536,13 +596,20 @@ class TestEndToEndPipeline:
             assert os.path.exists(output_file), f"Output file not created for {fmt}"
             output_df = load_dataframe(output_file)
             assert len(output_df) == 1, f"Wrong row count for {fmt}"
-            assert "generated" in output_df.columns, f"Missing generated column for {fmt}"
+            assert "generated" in output_df.columns, (
+                f"Missing generated column for {fmt}"
+            )
 
     @patch("syntk.pipelines.base.OpenAI")
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_resume_functionality(
-        self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
     ):
         """Test that pipeline can resume from partially completed output file."""
         input_file, input_df = sample_input_data
@@ -583,7 +650,12 @@ class TestEndToEndPipeline:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch("syntk.pipelines.base.get_tracker")
     def test_pipeline_with_limit(
-        self, mock_tracker, mock_openai_class, temp_dir, sample_input_data, mock_openai_client
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
     ):
         """Test pipeline respects limit parameter."""
         input_file, _ = sample_input_data
@@ -611,3 +683,49 @@ class TestEndToEndPipeline:
         output_df = load_dataframe(output_file)
         assert len(output_df) == 2
         assert mock_openai_client.chat.completions.create.call_count == 2
+
+    @patch("syntk.pipelines.base.OpenAI")
+    @patch.dict(os.environ, {}, clear=True)  # Clear all env vars including API keys
+    @patch("syntk.pipelines.base.get_tracker")
+    def test_pipeline_without_api_key_for_local_api(
+        self,
+        mock_tracker,
+        mock_openai_class,
+        temp_dir,
+        sample_input_data,
+        mock_openai_client,
+    ):
+        """Test pipeline works without API key for local APIs (uses placeholder)."""
+        input_file, input_df = sample_input_data
+        output_file = os.path.join(temp_dir, "output.parquet")
+
+        mock_openai_class.return_value = mock_openai_client
+        mock_tracker.return_value = Mock()
+
+        test_args = [
+            "syntk",
+            "--input_file",
+            input_file,
+            "--output_file",
+            output_file,
+            "--text_column",
+            "text",
+            "--base_url",
+            "http://localhost:8000/v1",  # Local API
+        ]
+
+        with patch("sys.argv", test_args):
+            main()
+
+        # Verify pipeline completed successfully
+        assert os.path.exists(output_file)
+        output_df = load_dataframe(output_file)
+        assert len(output_df) == len(input_df)
+        assert "generated" in output_df.columns
+        assert output_df["generated"].notna().all()
+
+        # Verify OpenAI client was created with placeholder key
+        mock_openai_class.assert_called_once()
+        call_kwargs = mock_openai_class.call_args[1]
+        assert call_kwargs["api_key"] == "placeholder-api-key"
+        assert call_kwargs["base_url"] == "http://localhost:8000/v1"
