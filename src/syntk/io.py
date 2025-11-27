@@ -1,7 +1,70 @@
 """File I/O utilities for dataframe operations."""
 
 import os
+import logging
 import pandas as pd
+from huggingface_hub import HfApi
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_hf_url(url: str) -> tuple[str, str]:
+    """Parse a Hugging Face URL to extract repo ID and file path.
+
+    Args:
+        url: Hugging Face URL in format hf://datasets/username/repo-name/path/to/file.ext
+
+    Returns:
+        Tuple of (repo_id, file_path)
+
+    Example:
+        >>> _parse_hf_url("hf://datasets/user/repo/file.tsv")
+        ('user/repo', 'file.tsv')
+    """
+    # Remove hf:// prefix
+    path = url.replace("hf://", "")
+    # Split into parts: ['datasets', 'username', 'repo-name', 'path', 'to', 'file.ext']
+    parts = path.split("/", 3)
+    if len(parts) < 4:
+        raise ValueError(f"Invalid Hugging Face URL format: {url}")
+
+    # repo_type is parts[0] (e.g., 'datasets' or 'models')
+    # repo_id is parts[1]/parts[2] (e.g., 'username/repo-name')
+    # file_path is parts[3] (e.g., 'path/to/file.ext')
+    repo_id = f"{parts[1]}/{parts[2]}"
+    file_path = parts[3]
+    return repo_id, file_path
+
+
+def _ensure_hf_repo_exists(output_file: str) -> None:
+    """Ensure Hugging Face repository exists, creating it if necessary.
+
+    Args:
+        output_file: Output file path (should be a hf:// URL)
+    """
+    if not output_file.startswith("hf://"):
+        return
+
+    try:
+        repo_id, _ = _parse_hf_url(output_file)
+
+        # Determine repo type from URL
+        repo_type = "dataset" if "/datasets/" in output_file else None
+
+        # Try to create the repository
+        api = HfApi()
+        try:
+            api.create_repo(
+                repo_id=repo_id, repo_type=repo_type, private=True, exist_ok=True
+            )
+            logger.info(f"Ensured Hugging Face repository exists: {repo_id}")
+        except Exception as e:
+            # Log warning but don't fail - the repo might exist but we don't have access
+            logger.debug(
+                f"Could not ensure repository exists (it may already exist): {e}"
+            )
+    except Exception as e:
+        logger.warning(f"Failed to parse or check Hugging Face URL: {e}")
 
 
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
@@ -9,18 +72,24 @@ def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
 
     Supported formats: .parquet, .csv, .json, .jsonl, .tsv
     Creates output directories if needed.
+    For Hugging Face URLs (hf://datasets/...), automatically creates private
+    dataset repositories if they don't exist.
 
     Args:
         df: DataFrame to save
-        output_file: Output file path
+        output_file: Output file path or Hugging Face URL
 
     Raises:
         ValueError: If file format is not supported
     """
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    # For HF URLs, ensure the repository exists
+    if output_file.startswith("hf://"):
+        _ensure_hf_repo_exists(output_file)
+    else:
+        # Ensure output directory exists for local files
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
     output_file_lower = output_file.lower()
     if output_file_lower.endswith(".parquet"):
