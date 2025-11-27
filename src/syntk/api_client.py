@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from typing import Optional, Dict, Any
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError, PermissionDeniedError
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,21 @@ def get_chat_response(
     if presence_penalty is not None:
         kwargs["presence_penalty"] = presence_penalty
 
-    response = client.chat.completions.create(**kwargs)
+    try:
+        response = client.chat.completions.create(**kwargs)
+    except (AuthenticationError, PermissionDeniedError) as e:
+        # Provide helpful error message for authentication failures
+        error_msg = (
+            f"Authentication failed: {str(e)}\n"
+            f"This typically means the API key is missing or invalid.\n"
+            f"For services like OpenAI or OpenRouter, ensure you have set the "
+            f"appropriate environment variable (e.g., OPENAI_API_KEY, OPENROUTER_API_KEY).\n"
+            f"If you're using a local API that doesn't require authentication, "
+            f"the service may still be rejecting requests - check your API configuration."
+        )
+        logger.error(error_msg)
+        # Re-raise the original exception with additional context in the message
+        raise
 
     message = response.choices[0].message
     content = message.content
