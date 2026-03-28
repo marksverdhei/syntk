@@ -4,6 +4,25 @@ import os
 import pandas as pd
 
 
+def _ensure_hf_dataset_repo_exists(output_file: str) -> None:
+    """Auto-create a private HuggingFace dataset repo if the path is hf:// and the repo doesn't exist.
+
+    Args:
+        output_file: Output file path, e.g. hf://datasets/owner/repo/file.tsv
+    """
+    # hf://datasets/<owner>/<repo>/<path>
+    rest = output_file[len("hf://datasets/"):]
+    parts = rest.split("/")
+    if len(parts) < 2:
+        return
+    repo_id = f"{parts[0]}/{parts[1]}"
+    try:
+        from huggingface_hub import create_repo
+        create_repo(repo_id, repo_type="dataset", private=True, exist_ok=True)
+    except Exception:
+        pass
+
+
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
     """Save dataframe to file, detecting format from extension.
 
@@ -17,10 +36,13 @@ def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
     Raises:
         ValueError: If file format is not supported
     """
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    if output_file.startswith("hf://datasets/"):
+        _ensure_hf_dataset_repo_exists(output_file)
+    else:
+        # Ensure output directory exists for local paths
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
     output_file_lower = output_file.lower()
     if output_file_lower.endswith(".parquet"):
