@@ -25,6 +25,22 @@ def column(ctx: typer.Context):
         sys.argv = original_argv
 
 
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def bootstrap(ctx: typer.Context):
+    """Generate N new rows for a tabular dataset using LLM few-shot prompting."""
+    from syntk.pipelines import bootstrap as bootstrap_pipeline
+
+    original_argv = sys.argv.copy()
+    sys.argv = [sys.argv[0]] + ctx.args
+
+    try:
+        bootstrap_pipeline.main()
+    finally:
+        sys.argv = original_argv
+
+
 @app.callback(invoke_without_command=True)
 def callback(ctx: typer.Context):
     """Syntk - Toolkit for synthetic data generation and processing"""
