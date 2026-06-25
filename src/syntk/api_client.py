@@ -97,9 +97,16 @@ def get_chat_response(
         if content and len(content) > 200
         else f"API Response: {content}"
     )
-    logger.debug(
-        f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}"
-    )
+    # Not every OpenAI-compatible server returns usage — some llama.cpp / vLLM
+    # configurations omit it for streaming-style responses, in which case
+    # response.usage is None and attribute access would AttributeError out of
+    # a debug log. Skip the token log instead of crashing the call.
+    if response.usage is not None:
+        logger.debug(
+            f"API Call - Tokens used: prompt={response.usage.prompt_tokens}, "
+            f"completion={response.usage.completion_tokens}, "
+            f"total={response.usage.total_tokens}"
+        )
 
     result = {
         "content": content,
