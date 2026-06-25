@@ -1,9 +1,8 @@
 """Tests for syntk CLI (syntk.cli)."""
 
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 from syntk.cli import app
 from typer.testing import CliRunner
@@ -33,7 +32,7 @@ class TestColumnCommand:
 
     def test_column_invokes_pipeline_main(self):
         """column subcommand should call column_pipeline.main."""
-        with patch("syntk.pipelines.column.main") as mock_main:
+        with patch("syntk.pipelines.column.main"):
             result = runner.invoke(app, ["column", "--help"])
         # Either --help exits before main, or main is called - just check no crash
         assert result.exit_code == 0

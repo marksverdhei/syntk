@@ -1,10 +1,10 @@
 """Tests for syntk.api_client.get_chat_response."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import logging
 
 import pytest
-from openai import AuthenticationError, PermissionDeniedError
+from openai import AuthenticationError
 
 from syntk.api_client import get_chat_response
 

@@ -3,7 +3,6 @@ and ColumnPipeline.get_argument_classes."""
 
 from __future__ import annotations
 
-import pytest
 
 from syntk.pipelines.column import (
     ColumnDataArguments,
@@ -14,8 +13,6 @@ from syntk.config import (
     APIArguments,
     ConfigArguments,
     GenerationArguments,
-    BaseDataArguments,
-    BaseProcessingArguments,
 )
 from syntk.tracking import TrackingArguments
 

@@ -1,8 +1,7 @@
 """Tests for ExperimentTracker.log_summary and trackio backend."""
 
-import pytest
-from unittest.mock import Mock, patch, call
-from syntk.tracking import ExperimentTracker, get_tracker, TrackingArguments
+from unittest.mock import Mock, patch
+from syntk.tracking import ExperimentTracker
 
 
 # ---------------------------------------------------------------------------

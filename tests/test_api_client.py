@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 
 import pytest
 
@@ -94,5 +93,5 @@ class TestSaveRawApiCall:
         result = {"raw": {"request": {}, "response": {}}}
         for i in [10, 20, 30]:
             save_raw_api_call(path, row_index=i, result=result)
-        records = [json.loads(l) for l in open(path)]
+        records = [json.loads(line) for line in open(path)]
         assert [r["row_index"] for r in records] == [10, 20, 30]

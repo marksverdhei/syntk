@@ -1,7 +1,6 @@
 """Tests for ColumnPipeline.process_row."""
 
-import json
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest

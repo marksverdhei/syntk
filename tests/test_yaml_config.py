@@ -1,14 +1,11 @@
 """Tests for BasePipeline._merge_yaml_config YAML loading and CLI override merging."""
 
-import sys
 import yaml
 import pytest
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple, Type, Dict, Any
+from typing import Tuple, Type, Dict, Any
 
 import pandas as pd
-from transformers import HfArgumentParser
 
 from syntk.config import (
     ConfigArguments,

@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple, Type
 
 import pandas as pd
-import pytest
 
 from syntk.config import (
     ConfigArguments,

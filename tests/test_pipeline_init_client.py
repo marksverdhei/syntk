@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Tuple, Type
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 from openai import OpenAI
 
 from syntk.config import (

@@ -2,10 +2,9 @@
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Type
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from syntk.config import (
     ConfigArguments,
