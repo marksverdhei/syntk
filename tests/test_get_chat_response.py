@@ -186,3 +186,14 @@ class TestGetChatResponse:
             result = get_chat_response(client, "q", "gpt-4")
         assert result["content"] is None
         assert any("None" in r.message or "none" in r.message.lower() for r in caplog.records)
+
+    def test_none_usage_does_not_crash(self):
+        """Some OpenAI-compatible servers (certain llama.cpp / vLLM configs)
+        return response.usage=None. The defensive token-debug log must not
+        AttributeError out of the call."""
+        response = _make_response()
+        response.usage = None
+        client = _make_client(response)
+        # Should return cleanly — no AttributeError on response.usage.prompt_tokens
+        result = get_chat_response(client, "q", "gpt-4")
+        assert result["content"] == "hello"
