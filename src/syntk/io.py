@@ -4,11 +4,29 @@ import os
 import pandas as pd
 
 
+def _ensure_hf_dataset_repo_exists(output_file: str) -> None:
+    """For hf://datasets/<owner>/<repo>/... paths, create the dataset repo
+    (private, exist_ok=True) so the subsequent write doesn't FileNotFoundError
+    when the repo hasn't been created yet. Lazy-imports huggingface_hub so it's
+    not required for local-path callers."""
+    rest = output_file[len("hf://datasets/"):]
+    parts = rest.split("/")
+    if len(parts) < 2:
+        return
+    repo_id = f"{parts[0]}/{parts[1]}"
+    try:
+        from huggingface_hub import create_repo
+        create_repo(repo_id, repo_type="dataset", private=True, exist_ok=True)
+    except Exception:
+        pass
+
+
 def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
     """Save dataframe to file, detecting format from extension.
 
     Supported formats: .parquet, .csv, .json, .jsonl, .tsv
-    Creates output directories if needed.
+    Creates output directories if needed. For hf://datasets/owner/repo/...
+    paths, auto-creates the dataset repo if it doesn't exist yet.
 
     Args:
         df: DataFrame to save
@@ -17,10 +35,12 @@ def save_dataframe(df: pd.DataFrame, output_file: str) -> None:
     Raises:
         ValueError: If file format is not supported
     """
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    if output_file.startswith("hf://datasets/"):
+        _ensure_hf_dataset_repo_exists(output_file)
+    else:
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
     output_file_lower = output_file.lower()
     if output_file_lower.endswith(".parquet"):
