@@ -39,7 +39,6 @@ git clone https://github.com/marksverdhei/syntk.git
 cd syntk
 uv sync --dev
 source .venv/bin/activate
-uv pip install -e .
 ```
 
 ## Quick Start
