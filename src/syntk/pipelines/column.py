@@ -108,6 +108,27 @@ class ColumnPipeline(BasePipeline):
             "save_interval": self.proc_args.save_interval,
         }
 
+    def _resolve_stop_reason_column(self, df: pd.DataFrame, resuming: bool) -> str:
+        """Pick the column to write generated stop-reasons into.
+
+        Fresh run: allocate the first free ``stop_reason`` name. Resume: reuse
+        the column this pipeline wrote last time instead of allocating a new
+        suffix — otherwise stop-reasons split across ``stop_reason``,
+        ``stop_reason_1``, ... on every resume (#44). The pipeline-owned column
+        is the candidate whose populated rows line up exactly with the output
+        column's (``process_row`` writes both together), which distinguishes it
+        from a pre-existing user column of the same name.
+        """
+        base = "stop_reason"
+        out_col = self.data_args.output_column
+        if resuming and out_col in df.columns:
+            out_mask = df[out_col].notna()
+            if out_mask.any():
+                for c in df.columns:
+                    if (c == base or c.startswith(base + "_")) and df[c].notna().equals(out_mask):
+                        return c
+        return find_available_column_name(df, base)
+
     def setup_dataframe(self, df: pd.DataFrame, resuming: bool) -> pd.DataFrame:
         """Initialize output columns."""
         # Initialize output column if not resuming
@@ -116,7 +137,7 @@ class ColumnPipeline(BasePipeline):
 
         # Initialize optional stop reason column
         if self.data_args.save_stop_reason:
-            self.actual_stop_reason_column = find_available_column_name(df, "stop_reason")
+            self.actual_stop_reason_column = self._resolve_stop_reason_column(df, resuming)
             if not resuming or self.actual_stop_reason_column not in df.columns:
                 df[self.actual_stop_reason_column] = pd.NA
             logger.info(f"Stop reasons will be saved to column: {self.actual_stop_reason_column}")
