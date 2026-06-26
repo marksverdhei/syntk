@@ -88,6 +88,32 @@ class TestSetupDataframe:
         pipeline.setup_dataframe(df, resuming=False)
         assert pipeline.actual_stop_reason_column is None
 
+    def test_resume_reuses_pipeline_stop_reason_column(self):
+        # On resume, reuse the stop_reason column written last run instead of
+        # allocating a new suffix that splits the data across runs (#44).
+        pipeline = _make_pipeline(output_column="out", save_stop_reason=True)
+        # Run 1's partial output: row 0 processed (out + stop_reason both set).
+        df = pd.DataFrame({
+            "text": ["a", "b"],
+            "out": ["gen-0", pd.NA],
+            "stop_reason": ["stop", pd.NA],
+        })
+        pipeline.setup_dataframe(df, resuming=True)
+        assert pipeline.actual_stop_reason_column == "stop_reason"
+
+    def test_resume_reuses_owned_column_despite_user_collision(self):
+        # If the input had a user 'stop_reason' column, Run 1 wrote to
+        # 'stop_reason_1'; resume must reuse that, not allocate 'stop_reason_2'.
+        pipeline = _make_pipeline(output_column="out", save_stop_reason=True)
+        df = pd.DataFrame({
+            "text": ["a", "b"],
+            "stop_reason": ["user-x", "user-y"],   # user's full column
+            "out": ["gen-0", pd.NA],
+            "stop_reason_1": ["stop", pd.NA],       # pipeline-owned, partial
+        })
+        pipeline.setup_dataframe(df, resuming=True)
+        assert pipeline.actual_stop_reason_column == "stop_reason_1"
+
     def test_adds_reasoning_content_column_when_specified(self):
         pipeline = _make_pipeline(reasoning_content_column="reasoning")
         df = pd.DataFrame({"text": ["a"]})
