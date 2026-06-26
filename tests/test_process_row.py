@@ -66,6 +66,29 @@ class TestProcessRow:
             result = pipeline.process_row(row, idx=0)
         assert result["generated"] == "a response"
 
+    def test_none_content_coerced_to_empty_string(self):
+        # None content must be written as "" not None, else the row looks
+        # unprocessed (NaN) and is retried forever on resume (#45).
+        pipeline = _make_pipeline()
+        row = self._row(text="hi")
+        api_result = _make_api_result(content=None)
+        with patch("syntk.pipelines.column.get_chat_response", return_value=api_result):
+            result = pipeline.process_row(row, idx=0)
+        assert result["generated"] == ""
+
+    def test_none_result_row_not_reprocessed_on_resume(self):
+        # End-to-end of the resume gate: a row whose generation yielded None
+        # content is considered processed and not picked up again (#45).
+        pipeline = _make_pipeline()
+        api_result = _make_api_result(content=None)
+        with patch("syntk.pipelines.column.get_chat_response", return_value=api_result):
+            res = pipeline.process_row(pd.Series({"text": "hi"}), idx=0)
+        df = pd.DataFrame({"text": ["hi"]})
+        df["generated"] = pd.NA
+        for col, val in res.items():
+            df.at[0, col] = val
+        assert pipeline.get_rows_to_process(df) == []
+
     def test_formats_prompt_from_template(self):
         pipeline = _make_pipeline(prompt_template="Summarize: {text}")
         row = self._row(text="the quick fox")

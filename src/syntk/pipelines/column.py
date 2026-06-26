@@ -184,8 +184,13 @@ class ColumnPipeline(BasePipeline):
             )
             self.responses[prompt] = api_result
 
-        # Build result dict with columns to save
-        result = {self.data_args.output_column: api_result["content"]}
+        # Build result dict with columns to save. Coerce a None content to ""
+        # so a row that was processed but produced no content (e.g. content-
+        # filter rejections, some local-LLM edge cases) is not seen as
+        # unprocessed and retried forever on resume (#45) — get_rows_to_process
+        # already treats empty strings as processed.
+        content = api_result["content"]
+        result = {self.data_args.output_column: content if content is not None else ""}
 
         # Add reasoning content if column specified
         if self.data_args.reasoning_content_column:
