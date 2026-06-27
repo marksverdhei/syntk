@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import yaml
 from tqdm import trange
 from transformers import HfArgumentParser
 
@@ -195,6 +196,23 @@ def bootstrap(
     return pd.DataFrame(new_rows, columns=columns)
 
 
+def _merge_yaml_config(config_file: str, arg_objects: list, arg_classes: tuple) -> None:
+    """Load a flattened YAML config and merge it into already-parsed dataclass
+    instances, with CLI values taking precedence over YAML over defaults.
+
+    Mirrors BasePipeline._merge_yaml_config so a positional `config.yaml` is
+    honoured by `syntk bootstrap` exactly as it is by the column pipeline.
+    """
+    with open(config_file, "r") as f:
+        config_dict = yaml.safe_load(f) or {}
+    yaml_args = HfArgumentParser(arg_classes).parse_dict(config_dict, allow_extra_keys=True)
+    for args_obj, yaml_obj in zip(arg_objects, yaml_args):
+        for field_name in args_obj.__dataclass_fields__:
+            default_value = args_obj.__dataclass_fields__[field_name].default
+            if getattr(args_obj, field_name) == default_value:  # CLI left it at default
+                setattr(args_obj, field_name, getattr(yaml_obj, field_name))
+
+
 def main() -> None:
     """Entry point for syntk bootstrap."""
     logging.basicConfig(
@@ -203,12 +221,14 @@ def main() -> None:
     )
 
     # Support positional YAML config
+    config_file = None
     args_to_parse = None
     if (
         len(sys.argv) > 1
         and sys.argv[1].endswith((".yaml", ".yml"))
         and not sys.argv[1].startswith("--")
     ):
+        config_file = sys.argv[1]
         args_to_parse = sys.argv[2:]
 
     parser = HfArgumentParser(
@@ -217,6 +237,15 @@ def main() -> None:
     config_args, api_args, gen_args, data_args = parser.parse_args_into_dataclasses(
         args=args_to_parse
     )
+
+    # Load + merge the positional YAML (CLI overrides YAML overrides defaults).
+    # Without this the YAML was parsed off the front of argv and silently ignored.
+    if config_file:
+        _merge_yaml_config(
+            config_file,
+            [api_args, gen_args, data_args],
+            (APIArguments, GenerationArguments, BootstrapDataArguments),
+        )
 
     # Initialize client
     api_key = os.getenv(api_args.api_key_env)

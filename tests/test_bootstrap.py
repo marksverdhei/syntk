@@ -209,3 +209,45 @@ class TestBootstrap:
         assert len(result) == 3
         # After the first row, pool grows — later prompts may include generated rows
         # (The test just verifies no crash and correct count)
+
+
+# ---------------------------------------------------------------------------
+# _merge_yaml_config — positional YAML support (README: "same shape as column")
+# ---------------------------------------------------------------------------
+
+class TestMergeYamlConfig:
+    def _merge(self, tmp_path, config: dict, api=None, gen=None, data=None):
+        import yaml
+
+        from syntk.pipelines.bootstrap import _merge_yaml_config
+
+        cfg = tmp_path / "c.yaml"
+        cfg.write_text(yaml.safe_dump(config))
+        api = api or APIArguments()
+        gen = gen or GenerationArguments()
+        data = data or BootstrapDataArguments()
+        _merge_yaml_config(
+            str(cfg),
+            [api, gen, data],
+            (APIArguments, GenerationArguments, BootstrapDataArguments),
+        )
+        return api, gen, data
+
+    def test_yaml_values_applied_when_cli_at_default(self, tmp_path):
+        api, gen, data = self._merge(
+            tmp_path, {"model": "yaml-model", "n": 99, "n_shots": 7}
+        )
+        assert api.model == "yaml-model"   # was default → take YAML
+        assert data.n == 99
+        assert data.n_shots == 7
+
+    def test_cli_value_overrides_yaml(self, tmp_path):
+        # data.n is explicitly set (differs from the default 10) → CLI wins.
+        data = BootstrapDataArguments(n=5)
+        _, _, data = self._merge(tmp_path, {"n": 99}, data=data)
+        assert data.n == 5
+
+    def test_empty_yaml_is_noop(self, tmp_path):
+        api, _, data = self._merge(tmp_path, {})
+        assert api.model == APIArguments().model
+        assert data.n == BootstrapDataArguments().n
