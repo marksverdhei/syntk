@@ -19,6 +19,7 @@ def get_chat_response(
     frequency_penalty: Optional[float] = None,
     presence_penalty: Optional[float] = None,
     return_raw: bool = False,
+    system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Get response from OpenAI-compatible API.
 
@@ -32,6 +33,7 @@ def get_chat_response(
         frequency_penalty: Frequency penalty (optional)
         presence_penalty: Presence penalty (optional)
         return_raw: If True, include raw request/response in result
+        system_prompt: Optional system message prepended before the user prompt
 
     Returns:
         Dict with keys:
@@ -48,10 +50,16 @@ def get_chat_response(
         else f"API Call - Prompt: {prompt}"
     )
 
+    # Build the message list: optional system message, then the user prompt.
+    messages = []
+    if system_prompt is not None:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
     # Build kwargs dict, only including non-None values
     kwargs = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
     }
 
     if temperature is not None:

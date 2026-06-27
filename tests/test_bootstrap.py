@@ -137,10 +137,11 @@ class TestBootstrap:
         call_iter = iter(responses)
 
         def fake_get_chat_response(**kwargs):
+            # get_chat_response returns a dict; bootstrap reads ["content"].
             try:
-                return next(call_iter)
+                return {"content": next(call_iter)}
             except StopIteration:
-                return None
+                return {"content": None}
 
         with patch("syntk.pipelines.bootstrap.get_chat_response", side_effect=fake_get_chat_response):
             return bootstrap(client, df, data_args, _api_args(), _gen_args())
@@ -183,7 +184,7 @@ class TestBootstrap:
         resp = '{"text": "a", "label": 0}'
         df = _df(20)
 
-        with patch("syntk.pipelines.bootstrap.get_chat_response", return_value=resp):
+        with patch("syntk.pipelines.bootstrap.get_chat_response", return_value={"content": resp}):
             r1 = bootstrap(MagicMock(), df, _data_args(n=3, seed=99), _api_args(), _gen_args())
             r2 = bootstrap(MagicMock(), df, _data_args(n=3, seed=99), _api_args(), _gen_args())
 
@@ -198,8 +199,8 @@ class TestBootstrap:
         call_count = []
 
         def fake_resp(**kwargs):
-            call_count.append(kwargs["messages"])
-            return resp
+            call_count.append(kwargs["prompt"])
+            return {"content": resp}
 
         with patch("syntk.pipelines.bootstrap.get_chat_response", side_effect=fake_resp):
             result = bootstrap(
@@ -209,6 +210,31 @@ class TestBootstrap:
         assert len(result) == 3
         # After the first row, pool grows — later prompts may include generated rows
         # (The test just verifies no crash and correct count)
+
+    def test_real_get_chat_response_contract(self):
+        """Mock the OpenAI *client* (not get_chat_response) so the real call path
+        runs: bootstrap must pass `prompt=`/`system_prompt=` (not `messages=`)
+        and read `["content"]` off the dict return. Mocking get_chat_response
+        directly hid this — the call raised TypeError against a real client."""
+        df = _df(3)
+        message = MagicMock()
+        message.content = '{"text": "x", "label": 1}'
+        del message.reasoning_content  # simulate no reasoning attr
+        choice = MagicMock()
+        choice.message = message
+        choice.finish_reason = "stop"
+        response = MagicMock()
+        response.choices = [choice]
+        response.usage = None
+        client = MagicMock()
+        client.chat.completions.create.return_value = response
+
+        result = bootstrap(client, df, _data_args(n=2), _api_args(), _gen_args())
+
+        assert len(result) == 2
+        # The system prompt must be forwarded as a leading system message.
+        sent = client.chat.completions.create.call_args.kwargs["messages"]
+        assert [m["role"] for m in sent] == ["system", "user"]
 
 
 # ---------------------------------------------------------------------------

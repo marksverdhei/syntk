@@ -102,6 +102,15 @@ class TestGetChatResponse:
         assert kwargs["model"] == "gpt-3.5-turbo"
         assert kwargs["messages"] == [{"role": "user", "content": "my prompt"}]
 
+    def test_system_prompt_prepended_as_system_message(self):
+        client = _make_client()
+        get_chat_response(client, "u", "gpt-4", system_prompt="be terse")
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["messages"] == [
+            {"role": "system", "content": "be terse"},
+            {"role": "user", "content": "u"},
+        ]
+
     def test_temperature_included_when_set(self):
         client = _make_client()
         get_chat_response(client, "q", "gpt-4", temperature=0.7)
