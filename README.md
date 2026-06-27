@@ -9,6 +9,7 @@ A synthetic data toolkit for generating and augmenting datasets using Large Lang
 ### Key Features
 
 - **Column Pipeline**: Fill dataset columns with LLM-generated values
+- **Bootstrap Pipeline**: Grow a tabular dataset by N rows via few-shot LLM prompting
 - **Flexible Data Formats**: Support for Parquet, CSV, JSON, JSONL, and TSV
 - **OpenAI-Compatible APIs**: Works with OpenAI, OpenRouter, and any compatible endpoint
 - **Resume Support**: Automatically resumes interrupted processing
@@ -178,9 +179,26 @@ aim up --repo ./logs
 
 ## Available Pipelines
 
-- **`column`**: Fill dataset columns with LLM-generated values
+- **`column`**: Fill dataset columns with LLM-generated values from a prompt template.
+- **`bootstrap`**: Grow a tabular dataset by `N` rows using few-shot LLM prompting — for each new row, sample `n_shots` existing rows as in-context examples and ask the model to generate one more in the same style. Optionally appends to the source.
 
-More pipelines coming soon!
+### Bootstrap example
+
+```bash
+syntk bootstrap \
+  --input-file data.parquet \
+  --output-file data_bootstrapped.parquet \
+  --n 100 \
+  --n-shots 5 \
+  --model gpt-4o \
+  --seed 42
+```
+
+Standard `APIArguments` / `GenerationArguments` flags (`--model`, `--temperature`, `--max-tokens`, `--base-url`, etc.) all apply, and a YAML config file may be passed positionally (same shape as the column pipeline). Useful knobs specific to bootstrap:
+
+- `--columns text,label` — restrict generation to a subset of columns; others are populated `None`.
+- `--append False` — write only the generated rows to `--output-file` instead of `input + generated`.
+- `--system-prompt "..."` — override the default JSON-row instruction.
 
 ## Development
 
