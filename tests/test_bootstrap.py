@@ -236,6 +236,62 @@ class TestBootstrap:
         sent = client.chat.completions.create.call_args.kwargs["messages"]
         assert [m["role"] for m in sent] == ["system", "user"]
 
+    def test_generation_kwargs_forwarded_when_non_none(self):
+        """Each non-None GenerationArguments field must reach the OpenAI client
+        as a kwarg (temperature / max_tokens / top_p / frequency_penalty /
+        presence_penalty). Defaults are all None — they get skipped at the
+        gen_kwargs build site (bootstrap.py:153-162) — so omitting this
+        regression let the per-field forwarding rot silently."""
+        df = _df(3)
+        message = MagicMock()
+        message.content = '{"text": "x", "label": 1}'
+        del message.reasoning_content
+        choice = MagicMock()
+        choice.message = message
+        choice.finish_reason = "stop"
+        response = MagicMock()
+        response.choices = [choice]
+        response.usage = None
+        client = MagicMock()
+        client.chat.completions.create.return_value = response
+
+        gen = GenerationArguments(
+            temperature=0.7, max_tokens=100, top_p=0.9,
+            frequency_penalty=0.2, presence_penalty=0.1,
+        )
+        bootstrap(client, df, _data_args(n=1), _api_args(), gen)
+
+        sent = client.chat.completions.create.call_args.kwargs
+        assert sent["temperature"] == 0.7
+        assert sent["max_tokens"] == 100
+        assert sent["top_p"] == 0.9
+        assert sent["frequency_penalty"] == 0.2
+        assert sent["presence_penalty"] == 0.1
+
+    def test_generation_kwargs_skipped_when_none(self):
+        """Symmetric regression: None-valued GenerationArguments fields must
+        NOT appear in the call kwargs (vs. being forwarded as the literal
+        None, which the OpenAI client rejects for several of these fields)."""
+        df = _df(3)
+        message = MagicMock()
+        message.content = '{"text": "x", "label": 1}'
+        del message.reasoning_content
+        choice = MagicMock()
+        choice.message = message
+        choice.finish_reason = "stop"
+        response = MagicMock()
+        response.choices = [choice]
+        response.usage = None
+        client = MagicMock()
+        client.chat.completions.create.return_value = response
+
+        bootstrap(client, df, _data_args(n=1), _api_args(), _gen_args())
+
+        sent = client.chat.completions.create.call_args.kwargs
+        for fld in ("temperature", "max_tokens", "top_p",
+                    "frequency_penalty", "presence_penalty"):
+            assert fld not in sent, f"{fld!r} should be skipped when None"
+
 
 # ---------------------------------------------------------------------------
 # _merge_yaml_config — positional YAML support (README: "same shape as column")
