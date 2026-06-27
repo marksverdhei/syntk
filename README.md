@@ -91,6 +91,15 @@ Run your pipeline:
 syntk column your_config.yaml
 ```
 
+### Hugging Face dataset paths (`hf://`)
+
+`input_file` and `output_file` both accept `hf://datasets/<owner>/<repo>/<path>` URIs in addition to local paths. Reads stream the parquet/JSONL files straight from the Hub via `huggingface_hub`. Writes to an `hf://datasets/...` URI auto-create the dataset repo if it doesn't exist yet (private, with `exist_ok=True`), so the first run won't FileNotFoundError on a missing repo. Authentication uses the same `HF_TOKEN` environment variable the `huggingface_hub` CLI does.
+
+```yaml
+input_file: "hf://datasets/ltg/norec_sentence/ternary/train-00000-of-00001.parquet"
+output_file: "hf://datasets/marksverdhei/norec-annotated/train.parquet"
+```
+
 ### Command-Line Options
 
 Override any config file setting via command-line:
