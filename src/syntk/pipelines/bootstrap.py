@@ -166,26 +166,24 @@ def bootstrap(
         examples = random.sample(existing_rows, k)
 
         user_msg = _build_user_message(examples, columns)
-        messages = [
-            {"role": "system", "content": data_args.system_prompt},
-            {"role": "user", "content": user_msg},
-        ]
 
-        response = get_chat_response(
+        api_result = get_chat_response(
             client=client,
-            messages=messages,
+            prompt=user_msg,
             model=api_args.model,
+            system_prompt=data_args.system_prompt,
             **gen_kwargs,
         )
 
-        if response is None:
-            logger.warning("API returned None response, skipping row")
+        content = api_result["content"]
+        if content is None:
+            logger.warning("API returned no content, skipping row")
             failed += 1
             continue
 
-        parsed = _parse_row_response(response, columns)
+        parsed = _parse_row_response(content, columns)
         if parsed is None:
-            logger.warning(f"Could not parse LLM response as JSON row: {response[:200]!r}")
+            logger.warning(f"Could not parse LLM response as JSON row: {content[:200]!r}")
             failed += 1
             continue
 
